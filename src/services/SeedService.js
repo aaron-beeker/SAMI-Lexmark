@@ -1,4 +1,4 @@
-import { collection, doc, writeBatch, getDocs, limit, query, serverTimestamp } from "firebase/firestore";
+import { collection, doc, writeBatch, getDocs, limit, query } from "firebase/firestore";
 import { calcularFechasPredictivas } from "./PredictionService";
 
 const SEED_DATA = [
@@ -173,27 +173,37 @@ export async function seedPrintersIfEmpty(db) {
       // Determine dynamic levels and status to present a realistic dashboard initially
       let toner = 90;
       let unit = 95;
+      let maint = 98;
       let crit = "Estable";
+      let ubicacion = "Hospital"; // Hospital vs MUR
       
       const obs = printer.observaciones.toLowerCase();
       if (obs.includes("inoperativa") || obs.includes("comprar")) {
         crit = "Crítico";
         toner = 0;
         unit = 0;
+        maint = 0;
       } else if (obs.includes("traba") || obs.includes("necesita") || obs.includes("detalles")) {
         crit = "Advertencia";
         toner = 15;
         unit = 35;
+        maint = 25;
       } else {
-        // Vary the toner/unit levels slightly based on index
+        // Vary the levels slightly based on index
         toner = 100 - ((index * 7) % 60);
         unit = 100 - ((index * 4) % 40);
-        if (toner <= 15 || unit <= 15) {
+        maint = 100 - ((index * 3) % 50);
+        if (toner <= 15 || unit <= 15 || maint <= 15) {
           crit = "Advertencia";
         }
       }
 
-      const prediction = calcularFechasPredictivas(toner, unit);
+      // If observations mention Escalating to manufacturer or buying warranty, assume it is in MUR
+      if (obs.includes("fabricante") || obs.includes("comprar garantia")) {
+        ubicacion = "MUR";
+      }
+
+      const prediction = calcularFechasPredictivas(toner, unit, maint);
 
       const printerDoc = {
         modelo: printer.modelo,
@@ -201,10 +211,12 @@ export async function seedPrintersIfEmpty(db) {
         codigo_caso_cas: printer.codigo_caso_cas || "",
         estado_criticidad: crit,
         observaciones: printer.observaciones || "",
+        ubicacion_entidad: ubicacion, // 'Hospital' or 'MUR'
         consumibles: {
           toner_nivel: toner,
           unidad_imagen_nivel: unit,
-          ultima_lectura: new Date() // Fallback to current Date
+          mantenimiento_kit_nivel: maint,
+          ultima_lectura: new Date()
         },
         prediccion: prediction
       };
@@ -217,6 +229,64 @@ export async function seedPrintersIfEmpty(db) {
     return true;
   } catch (error) {
     console.error("Error seeding Firestore:", error);
+    throw error;
+  }
+}
+
+export async function seedRepuestosIfEmpty(db) {
+  try {
+    const repuestosColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "repuestos");
+    const q = query(repuestosColRef, limit(1));
+    const snapshot = await getDocs(q);
+
+    if (!snapshot.empty) {
+      console.log("Firestore repuestos collection already has data. Skipping seed.");
+      return false;
+    }
+
+    console.log("Repuestos collection is empty. Seeding initial stock...");
+    const batch = writeBatch(db);
+
+    const initialStock = [
+      {
+        modelo: "MX431ADN",
+        toner_hospital: 5,
+        toner_deposito: 10,
+        unidad_hospital: 3,
+        unidad_deposito: 6,
+        mantenimiento_hospital: 2,
+        mantenimiento_deposito: 4
+      },
+      {
+        modelo: "MX632ADWE",
+        toner_hospital: 2,
+        toner_deposito: 4,
+        unidad_hospital: 1,
+        unidad_deposito: 2,
+        mantenimiento_hospital: 1,
+        mantenimiento_deposito: 2
+      },
+      {
+        modelo: "MX722ADHE",
+        toner_hospital: 1,
+        toner_deposito: 3,
+        unidad_hospital: 1,
+        unidad_deposito: 2,
+        mantenimiento_hospital: 1,
+        mantenimiento_deposito: 1
+      }
+    ];
+
+    initialStock.forEach(stock => {
+      const docRef = doc(repuestosColRef, stock.modelo);
+      batch.set(docRef, stock);
+    });
+
+    await batch.commit();
+    console.log("Successfully seeded 3 models in repuestos collection.");
+    return true;
+  } catch (error) {
+    console.error("Error seeding repuestos:", error);
     throw error;
   }
 }

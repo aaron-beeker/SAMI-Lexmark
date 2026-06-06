@@ -1,42 +1,53 @@
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  collection, 
-  doc, 
-  onSnapshot, 
-  updateDoc, 
-  addDoc, 
+import {
+  collection,
+  doc,
+  onSnapshot,
+  updateDoc,
+  addDoc,
   serverTimestamp,
   getDocs,
   orderBy,
-  query
+  query,
+  setDoc,
+  deleteDoc
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { seedPrintersIfEmpty } from "./services/SeedService";
+import { seedPrintersIfEmpty, seedRepuestosIfEmpty } from "./services/SeedService";
 import { calcularFechasPredictivas } from "./services/PredictionService";
-import { analizarEvidenciaSuministros } from "./services/GeminiService";
+import { analizarEvidenciaSuministros, analizarImportacionExcel } from "./services/GeminiService";
+import * as XLSX from "xlsx";
 
 export default function App() {
   // Navigation & UI tabs
   const [currentTab, setCurrentTab] = useState("dashboard"); // dashboard, inventario, chat, historial, settings
-  
+
   // Printers Firestore State
   const [printers, setPrinters] = useState([]);
   const [loadingPrinters, setLoadingPrinters] = useState(true);
-  
+
+  // Repuestos (Spare parts) Stock State
+  const [repuestos, setRepuestos] = useState([]);
+
   // Search & Filter State
   const [searchText, setSearchText] = useState("");
   const [filterCriticidad, setFilterCriticidad] = useState("all");
-  
+
   // Edit Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPrinter, setSelectedPrinter] = useState(null);
   const [editArea, setEditArea] = useState("");
   const [editToner, setEditToner] = useState(100);
   const [editUnit, setEditUnit] = useState(100);
+  const [editMantenimiento, setEditMantenimiento] = useState(100);
   const [editCriticidad, setEditCriticidad] = useState("Estable");
   const [editObservaciones, setEditObservaciones] = useState("");
   const [editCasCode, setEditCasCode] = useState("");
+  const [editUbicacion, setEditUbicacion] = useState("Hospital");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [isCreateMode, setIsCreateMode] = useState(false);
+  const [editIdSerie, setEditIdSerie] = useState("");
+  const [editModelo, setEditModelo] = useState("MX431ADN");
 
   // Selected Printer History
   const [selectedPrinterHistory, setSelectedPrinterHistory] = useState([]);
@@ -57,7 +68,15 @@ export default function App() {
   const [chatImage, setChatImage] = useState(null); // { base64, mimeType, preview }
   const [isChatLoading, setIsChatLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const chatEndRef = useRef(null);
+
+  // Excel Import State
+  const [excelData, setExcelData] = useState(null); // { equipos_normalizados, reporte_resumen }
+  const [isExcelLoading, setIsExcelLoading] = useState(false);
+  const [excelFileName, setExcelFileName] = useState("");
+  const [isExcelImportModalOpen, setIsExcelImportModalOpen] = useState(false);
+  const excelFileInputRef = useRef(null);
 
   // Gemini API Key config
   const [apiKeyInput, setApiKeyInput] = useState(localStorage.getItem("sami_gemini_api_key") || "");
@@ -73,13 +92,14 @@ export default function App() {
     const initApp = async () => {
       try {
         await seedPrintersIfEmpty(db);
+        await seedRepuestosIfEmpty(db);
       } catch (err) {
         console.error("Error in seed initialization:", err);
       }
-      
-      // Setup Realtime Sync
+
+      // Setup Realtime Sync for Printers
       const printersColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras");
-      const unsubscribe = onSnapshot(printersColRef, (snapshot) => {
+      const unsubscribePrinters = onSnapshot(printersColRef, (snapshot) => {
         const printerList = [];
         snapshot.forEach((doc) => {
           printerList.push({
@@ -101,6 +121,7 @@ export default function App() {
               area_actual: p.area_actual,
               toner_nivel: p.consumibles.toner_nivel,
               unidad_imagen_nivel: p.consumibles.unidad_imagen_nivel,
+              mantenimiento_kit_nivel: p.consumibles.mantenimiento_kit_nivel,
               estado_criticidad: p.estado_criticidad,
               observaciones: p.observaciones,
               timestamp
@@ -113,7 +134,25 @@ export default function App() {
         setLoadingPrinters(false);
       });
 
-      return () => unsubscribe();
+      // Setup Realtime Sync for Repuestos
+      const repuestosColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "repuestos");
+      const unsubscribeRepuestos = onSnapshot(repuestosColRef, (snapshot) => {
+        const repuestosList = [];
+        snapshot.forEach((doc) => {
+          repuestosList.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        setRepuestos(repuestosList);
+      }, (error) => {
+        console.error("Firestore repuestos onSnapshot error:", error);
+      });
+
+      return () => {
+        unsubscribePrinters();
+        unsubscribeRepuestos();
+      };
     };
 
     initApp();
@@ -125,13 +164,13 @@ export default function App() {
       const fetchHistory = async () => {
         try {
           const historyColRef = collection(
-            db, 
-            "artifacts", 
-            "sami-lexmark", 
-            "public", 
-            "data", 
-            "impresoras", 
-            selectedPrinter.id_serie, 
+            db,
+            "artifacts",
+            "sami-lexmark",
+            "public",
+            "data",
+            "impresoras",
+            selectedPrinter.id_serie,
             "historial_lecturas"
           );
           const q = query(historyColRef, orderBy("fecha_lectura", "desc"));
@@ -158,8 +197,15 @@ export default function App() {
   const kpiUpcoming = printers.filter(p => {
     const toner = p.consumibles?.toner_nivel ?? 100;
     const unit = p.consumibles?.unidad_imagen_nivel ?? 100;
-    return toner <= 15 || unit <= 15;
+    const maint = p.consumibles?.mantenimiento_kit_nivel ?? 100;
+    return toner <= 15 || unit <= 15 || maint <= 15;
   }).length;
+
+  // Physical Location & Service breakdowns
+  const kpiHospitalTotal = printers.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital").length;
+  const kpiHospitalEnServicio = printers.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && p.area_actual !== "Soporte").length;
+  const kpiHospitalEnSoporte = printers.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && p.area_actual === "Soporte").length;
+  const kpiMurTotal = printers.filter(p => p.ubicacion_entidad === "MUR").length;
 
   // Save Settings API Key
   const handleSaveApiKey = (e) => {
@@ -171,13 +217,36 @@ export default function App() {
 
   // Open Edit Modal with Pre-populated data
   const handleOpenEditModal = (printer) => {
+    setIsCreateMode(false);
     setSelectedPrinter(printer);
+    setEditIdSerie(printer.id_serie);
+    setEditModelo(printer.modelo);
     setEditArea(printer.area_actual || "");
     setEditToner(printer.consumibles?.toner_nivel ?? 100);
     setEditUnit(printer.consumibles?.unidad_imagen_nivel ?? 100);
+    setEditMantenimiento(printer.consumibles?.mantenimiento_kit_nivel ?? 100);
     setEditCriticidad(printer.estado_criticidad || "Estable");
     setEditObservaciones(printer.observaciones || "");
     setEditCasCode(printer.codigo_caso_cas || "");
+    setEditUbicacion(printer.ubicacion_entidad || "Hospital");
+    setIsModalOpen(true);
+  };
+
+  // Open Create Modal with default values
+  const handleOpenCreateModal = () => {
+    setIsCreateMode(true);
+    setSelectedPrinter(null);
+    setEditIdSerie("");
+    setEditModelo("MX431ADN");
+    setEditArea("Soporte");
+    setEditToner(100);
+    setEditUnit(100);
+    setEditMantenimiento(100);
+    setEditCriticidad("Estable");
+    setEditObservaciones("");
+    setEditCasCode("");
+    setEditUbicacion("Hospital");
+    setSelectedPrinterHistory([]);
     setIsModalOpen(true);
   };
 
@@ -186,67 +255,115 @@ export default function App() {
     setSelectedPrinter(null);
   };
 
-  // Helper to determine status based on toner/unit levels
-  const calculateCriticidad = (toner, unit) => {
-    if (toner === 0 || unit === 0) return "Crítico";
-    if (toner <= 15 || unit <= 15) return "Advertencia";
+  // Helper to determine status based on toner/unit/maintenance levels
+  const calculateCriticidad = (toner, unit, maintenance) => {
+    if (toner === 0 || unit === 0 || (maintenance !== undefined && maintenance === 0)) return "Crítico";
+    if (toner <= 15 || unit <= 15 || (maintenance !== undefined && maintenance <= 15)) return "Advertencia";
     return "Estable";
   };
 
-  // Submit Edit Modal Changes to Firestore
+  // Submit Edit or Create Modal Changes to Firestore
   const handleSavePrinterChanges = async (e) => {
     e.preventDefault();
-    if (!selectedPrinter) return;
+
+    const cleanId = editIdSerie.trim().toUpperCase();
+    if (!cleanId) {
+      alert("Por favor, ingrese un número de serie.");
+      return;
+    }
 
     setSavingEdit(true);
     try {
+      const computedCrit = calculateCriticidad(Number(editToner), Number(editUnit), Number(editMantenimiento));
+      const prediction = calcularFechasPredictivas(Number(editToner), Number(editUnit), Number(editMantenimiento));
+
       const docRef = doc(
-        db, 
-        "artifacts", 
-        "sami-lexmark", 
-        "public", 
-        "data", 
-        "impresoras", 
-        selectedPrinter.id_serie
+        db,
+        "artifacts",
+        "sami-lexmark",
+        "public",
+        "data",
+        "impresoras",
+        cleanId
       );
 
-      const computedCrit = calculateCriticidad(Number(editToner), Number(editUnit));
-      const prediction = calcularFechasPredictivas(Number(editToner), Number(editUnit));
-      
-      const updateData = {
-        area_actual: editArea,
-        codigo_caso_cas: editCasCode,
-        estado_criticidad: computedCrit,
-        observaciones: editObservaciones,
-        "consumibles.toner_nivel": Number(editToner),
-        "consumibles.unidad_imagen_nivel": Number(editUnit),
-        "consumibles.ultima_lectura": new Date(),
-        prediccion: prediction
-      };
+      if (isCreateMode) {
+        // Check for duplicates
+        const exists = printers.some(p => p.id_serie.toUpperCase() === cleanId);
+        if (exists) {
+          alert(`El número de serie ${cleanId} ya está registrado en el inventario.`);
+          setSavingEdit(false);
+          return;
+        }
 
-      await updateDoc(docRef, updateData);
+        const printerDoc = {
+          modelo: editModelo,
+          area_actual: editArea,
+          codigo_caso_cas: editCasCode,
+          estado_criticidad: computedCrit,
+          observaciones: editObservaciones || "Registrado manualmente",
+          ubicacion_entidad: editUbicacion,
+          consumibles: {
+            toner_nivel: Number(editToner),
+            unidad_imagen_nivel: Number(editUnit),
+            mantenimiento_kit_nivel: Number(editMantenimiento),
+            ultima_lectura: new Date()
+          },
+          prediccion: prediction
+        };
 
-      // Save to History subcollection
-      const historyColRef = collection(
-        db, 
-        "artifacts", 
-        "sami-lexmark", 
-        "public", 
-        "data", 
-        "impresoras", 
-        selectedPrinter.id_serie, 
-        "historial_lecturas"
-      );
+        await setDoc(docRef, printerDoc);
 
-      await addDoc(historyColRef, {
-        toner_nivel: Number(editToner),
-        unidad_imagen_nivel: Number(editUnit),
-        estado_criticidad: computedCrit,
-        observaciones: editObservaciones,
-        codigo_caso_cas: editCasCode,
-        fecha_lectura: new Date(),
-        tipo_actualizacion: "Manual"
-      });
+        // Save to History subcollection
+        const historyColRef = collection(docRef, "historial_lecturas");
+        await addDoc(historyColRef, {
+          toner_nivel: Number(editToner),
+          unidad_imagen_nivel: Number(editUnit),
+          mantenimiento_kit_nivel: Number(editMantenimiento),
+          estado_criticidad: computedCrit,
+          observaciones: printerDoc.observaciones,
+          codigo_caso_cas: editCasCode,
+          ubicacion_entidad: editUbicacion,
+          area_actual: editArea,
+          fecha_lectura: new Date(),
+          tipo_actualizacion: "Manual (Creado)"
+        });
+
+      } else {
+        // Edit mode
+        if (!selectedPrinter) return;
+
+        const updateData = {
+          modelo: editModelo,
+          area_actual: editArea,
+          codigo_caso_cas: editCasCode,
+          estado_criticidad: computedCrit,
+          observaciones: editObservaciones,
+          ubicacion_entidad: editUbicacion,
+          "consumibles.toner_nivel": Number(editToner),
+          "consumibles.unidad_imagen_nivel": Number(editUnit),
+          "consumibles.mantenimiento_kit_nivel": Number(editMantenimiento),
+          "consumibles.ultima_lectura": new Date(),
+          prediccion: prediction
+        };
+
+        await updateDoc(docRef, updateData);
+
+        // Save to History subcollection
+        const historyColRef = collection(docRef, "historial_lecturas");
+        await addDoc(historyColRef, {
+          toner_nivel: Number(editToner),
+          unidad_imagen_nivel: Number(editUnit),
+          mantenimiento_kit_nivel: Number(editMantenimiento),
+          estado_criticidad: computedCrit,
+          observaciones: editObservaciones,
+          codigo_caso_cas: editCasCode,
+          ubicacion_entidad: editUbicacion,
+          area_actual: editArea,
+          fecha_lectura: new Date(),
+          tipo_actualizacion: "Manual"
+        });
+      }
 
       handleCloseEditModal();
     } catch (error) {
@@ -254,6 +371,327 @@ export default function App() {
       alert("Error al guardar cambios: " + error.message);
     } finally {
       setSavingEdit(false);
+    }
+  };
+  
+  // Delete printer manually
+  const handleDeletePrinter = async () => {
+    if (!selectedPrinter) return;
+
+    const confirmDelete = window.confirm(
+      `¿Estás seguro de que deseas eliminar la impresora ${selectedPrinter.modelo} (S/N: ${selectedPrinter.id_serie})? Esta acción no se puede deshacer y eliminará permanentemente el equipo.`
+    );
+    if (!confirmDelete) return;
+
+    setSavingEdit(true);
+    try {
+      const docRef = doc(
+        db,
+        "artifacts",
+        "sami-lexmark",
+        "public",
+        "data",
+        "impresoras",
+        selectedPrinter.id_serie
+      );
+      await deleteDoc(docRef);
+
+      alert("Impresora eliminada exitosamente.");
+      handleCloseEditModal();
+    } catch (error) {
+      console.error("Error deleting printer:", error);
+      alert("Error al eliminar la impresora: " + error.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Update spare parts stock manually
+  const updateManualStock = async (modelo, field, newValue) => {
+    if (newValue < 0) return;
+    try {
+      const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "repuestos", modelo);
+      await updateDoc(docRef, {
+        [field]: Number(newValue)
+      });
+    } catch (e) {
+      console.error("Error updating manual stock:", e);
+    }
+  };
+
+
+  const handleExcelUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setExcelFileName(file.name);
+    setIsExcelLoading(true);
+    setIsExcelImportModalOpen(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const bstr = evt.target.result;
+          const wb = XLSX.read(bstr, { type: "binary" });
+
+          const allParsedRows = [];
+
+          wb.SheetNames.forEach(sheetName => {
+            const ws = wb.Sheets[sheetName];
+            const rawArrays = XLSX.utils.sheet_to_json(ws, { header: 1 });
+            if (rawArrays.length === 0) return;
+
+            // Find the header row dynamically
+            let headerRowIndex = -1;
+            const serialKeywords = ["serie", "s/n", "sn", "id_serie", "número de serie", "numero de serie", "serial", "nro", "cod"];
+
+            for (let i = 0; i < Math.min(10, rawArrays.length); i++) {
+              const row = rawArrays[i];
+              if (Array.isArray(row)) {
+                const hasSerialKey = row.some(cell => {
+                  if (cell === undefined || cell === null) return false;
+                  const cClean = String(cell).toLowerCase().trim();
+                  return serialKeywords.some(keyword => cClean.includes(keyword));
+                });
+                if (hasSerialKey) {
+                  headerRowIndex = i;
+                  break;
+                }
+              }
+            }
+
+            if (headerRowIndex === -1) {
+              headerRowIndex = 0;
+            }
+
+            const headers = rawArrays[headerRowIndex] || [];
+
+            const findColIndex = (keywords) => {
+              return headers.findIndex(h => {
+                if (h === undefined || h === null) return false;
+                const hClean = String(h).toLowerCase().trim();
+                return keywords.some(key => hClean.includes(key));
+              });
+            };
+
+            const colIdxIdSerie = findColIndex(["serie", "s/n", "sn", "id_serie", "número de serie", "numero de serie", "serial", "nro", "cod"]);
+            const colIdxModelo = findColIndex(["modelo", "model", "impresora"]);
+            const colIdxArea = findColIndex(["area", "área", "ubicacion", "ubicación", "area_actual", "sector", "area actual"]);
+            const colIdxEntity = findColIndex(["ubicación física", "ubicacion fisica", "entidad", "ubicacion_entidad", "destino", "lugar"]);
+            const colIdxToner = findColIndex(["toner", "tóner", "toner_nivel", "nivel de tóner", "toner nivel", "% toner", "% tóner"]);
+            const colIdxUnit = findColIndex(["unidad", "imagen", "unidad_imagen_nivel", "unidad de imagen", "unidad nivel", "% unidad", "% imagen", "drum"]);
+            const colIdxMaint = findColIndex(["mantenimiento", "kit", "fuser", "rodillos", "% kit", "% mantenimiento"]);
+            const colIdxCas = findColIndex(["cas", "caso", "codigo_caso_cas", "código de caso", "codigo de caso", "incidente", "ticket"]);
+            const colIdxObs = findColIndex(["observaciones", "detalles", "comentarios", "obs", "observacion", "comentario"]);
+
+            for (let j = headerRowIndex + 1; j < rawArrays.length; j++) {
+              const row = rawArrays[j];
+              if (!Array.isArray(row) || row.length === 0) continue;
+
+              const valAt = (idx) => {
+                if (idx === -1 || idx === undefined || idx === null || row[idx] === undefined || row[idx] === null) {
+                  return undefined;
+                }
+                return String(row[idx]).trim();
+              };
+
+              let id_serie = valAt(colIdxIdSerie) || "";
+
+              if (!id_serie) {
+                const firstVal = valAt(0);
+                if (firstVal && firstVal.length >= 5) {
+                  id_serie = firstVal;
+                }
+              }
+
+              if (!id_serie) {
+                const serialCandidate = row.find(cell => {
+                  if (cell === undefined || cell === null) return false;
+                  const sVal = String(cell).trim();
+                  return /^[a-zA-Z0-9-]{8,20}$/.test(sVal);
+                });
+                if (serialCandidate) {
+                  id_serie = String(serialCandidate).trim();
+                }
+              }
+
+              if (!id_serie || id_serie.length < 4) continue;
+
+              const modelVal = valAt(colIdxModelo) || "";
+              const areaVal = valAt(colIdxArea) || "";
+
+              let entityVal = valAt(colIdxEntity) || "";
+              if (!entityVal) {
+                entityVal = sheetName.toLowerCase().includes("mur") ? "MUR" : "Hospital";
+              }
+
+              const tonerValRaw = valAt(colIdxToner);
+              const tonerVal = tonerValRaw !== undefined ? Number(tonerValRaw.replace("%", "").trim()) : null;
+
+              const unitValRaw = valAt(colIdxUnit);
+              const unitVal = unitValRaw !== undefined ? Number(unitValRaw.replace("%", "").trim()) : null;
+
+              const maintValRaw = valAt(colIdxMaint);
+              const maintVal = maintValRaw !== undefined ? Number(maintValRaw.replace("%", "").trim()) : null;
+
+              const casVal = valAt(colIdxCas) || "";
+              const obsVal = valAt(colIdxObs) || "";
+
+              allParsedRows.push({
+                id_serie,
+                modelo: modelVal,
+                area_actual: areaVal,
+                ubicacion_entidad: entityVal,
+                toner_nivel: tonerVal,
+                unidad_imagen_nivel: unitVal,
+                mantenimiento_kit_nivel: maintVal,
+                codigo_caso_cas: casVal,
+                observaciones: obsVal
+              });
+            }
+          });
+
+          // Deduplicate rows by uppercase serial number before analysis and storage
+          const uniqueParsedRows = [];
+          const seenSerials = new Set();
+
+          allParsedRows.forEach(row => {
+            const snUpper = row.id_serie.toUpperCase();
+            if (!seenSerials.has(snUpper)) {
+              seenSerials.add(snUpper);
+              uniqueParsedRows.push(row);
+            }
+          });
+
+          if (uniqueParsedRows.length === 0) {
+            throw new Error("No se encontraron registros con Número de Serie válido en ninguna hoja del archivo.");
+          }
+
+          const geminiResult = await analizarImportacionExcel(uniqueParsedRows);
+          setExcelData(geminiResult);
+        } catch (error) {
+          console.error("Error reading or analyzing Excel:", error);
+          alert("Error al procesar el Excel: " + error.message);
+          setIsExcelImportModalOpen(false);
+        } finally {
+          setIsExcelLoading(false);
+        }
+      };
+      reader.readAsBinaryString(file);
+    } catch (err) {
+      console.error("Reader error:", err);
+      alert("Error al leer el archivo: " + err.message);
+      setIsExcelLoading(false);
+      setIsExcelImportModalOpen(false);
+    }
+  };
+
+  const handleConfirmExcelImport = async () => {
+    if (!excelData || !excelData.equipos_normalizados) return;
+
+    setIsExcelLoading(true);
+    try {
+      const auditLogLines = [];
+      const seenConfirmed = new Set();
+
+      for (const eq of excelData.equipos_normalizados) {
+        if (!eq.id_serie) continue;
+        const snUpper = eq.id_serie.toUpperCase();
+        if (seenConfirmed.has(snUpper)) continue;
+        seenConfirmed.add(snUpper);
+
+        const matched = printers.find(p => p.id_serie.toUpperCase() === snUpper);
+
+        let tonerVal = 100;
+        let unitVal = 100;
+        let maintVal = 100;
+
+        if (eq.toner_nivel !== undefined && eq.toner_nivel !== null) {
+          tonerVal = Number(eq.toner_nivel);
+        } else if (matched && matched.consumibles?.toner_nivel !== undefined) {
+          tonerVal = matched.consumibles.toner_nivel;
+        }
+
+        if (eq.unidad_imagen_nivel !== undefined && eq.unidad_imagen_nivel !== null) {
+          unitVal = Number(eq.unidad_imagen_nivel);
+        } else if (matched && matched.consumibles?.unidad_imagen_nivel !== undefined) {
+          unitVal = matched.consumibles.unidad_imagen_nivel;
+        }
+
+        if (eq.mantenimiento_kit_nivel !== undefined && eq.mantenimiento_kit_nivel !== null) {
+          maintVal = Number(eq.mantenimiento_kit_nivel);
+        } else if (matched && matched.consumibles?.mantenimiento_kit_nivel !== undefined) {
+          maintVal = matched.consumibles.mantenimiento_kit_nivel;
+        }
+
+        const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+        const computedCrit = calculateCriticidad(tonerVal, unitVal, maintVal);
+
+        const modelVal = eq.modelo || (matched ? matched.modelo : "MX431ADN");
+        const areaVal = eq.area_actual || (matched ? matched.area_actual : "Soporte");
+        const casVal = eq.codigo_caso_cas !== undefined && eq.codigo_caso_cas !== "" ? eq.codigo_caso_cas : (matched ? matched.codigo_caso_cas : "");
+        const obsVal = eq.observaciones !== undefined && eq.observaciones !== "" ? eq.observaciones : (matched ? matched.observaciones : "Importado desde Excel");
+        const entityVal = eq.ubicacion_entidad || (matched ? matched.ubicacion_entidad : "Hospital");
+
+        const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", snUpper);
+
+        const printerDoc = {
+          modelo: modelVal,
+          area_actual: areaVal,
+          codigo_caso_cas: casVal,
+          estado_criticidad: eq.estado_criticidad || computedCrit,
+          observaciones: obsVal,
+          ubicacion_entidad: entityVal,
+          consumibles: {
+            toner_nivel: tonerVal,
+            unidad_imagen_nivel: unitVal,
+            mantenimiento_kit_nivel: maintVal,
+            ultima_lectura: new Date()
+          },
+          prediccion: prediction
+        };
+
+        await setDoc(docRef, printerDoc);
+
+        const historyColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", snUpper, "historial_lecturas");
+        await addDoc(historyColRef, {
+          toner_nivel: tonerVal,
+          unidad_imagen_nivel: unitVal,
+          mantenimiento_kit_nivel: maintVal,
+          estado_criticidad: printerDoc.estado_criticidad,
+          observaciones: printerDoc.observaciones,
+          codigo_caso_cas: printerDoc.codigo_caso_cas,
+          ubicacion_entidad: printerDoc.ubicacion_entidad,
+          area_actual: areaVal,
+          fecha_lectura: new Date(),
+          tipo_actualizacion: "Importación Excel (IA)"
+        });
+
+        auditLogLines.push(`- **${printerDoc.modelo}** (S/N: ${snUpper}): ${printerDoc.ubicacion_entidad} (${printerDoc.area_actual})`);
+      }
+
+      setChatMessages(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          sender: "ai",
+          text: `📊 **Excel Importado Exitosamente por IA:** Se procesó el archivo "${excelFileName}" y se actualizaron ${excelData.equipos_normalizados.length} registros en Firestore.\n\n**Resumen del reporte:**\n${excelData.reporte_resumen}\n\n**Equipos actualizados:**\n${auditLogLines.slice(0, 10).join("\n")}${auditLogLines.length > 10 ? `\n... y ${auditLogLines.length - 10} más.` : ""}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+
+      alert(`Importación completada: ${excelData.equipos_normalizados.length} equipos procesados.`);
+      setIsExcelImportModalOpen(false);
+      setExcelData(null);
+      setExcelFileName("");
+
+      setCurrentTab("chat");
+    } catch (error) {
+      console.error("Error committing Excel import:", error);
+      alert("Error al guardar registros de Excel: " + error.message);
+    } finally {
+      setIsExcelLoading(false);
     }
   };
 
@@ -316,65 +754,372 @@ export default function App() {
 
       console.log("Gemini parse result:", result);
 
-      if (!result.id_serie) {
-        throw new Error("La IA no pudo determinar el Número de Serie del dispositivo.");
-      }
+      let action = result.accion || "actualizar";
 
-      // Check if printer exists in our seeded database
-      const matchedPrinter = printers.find(p => p.id_serie.toLowerCase() === result.id_serie.toLowerCase());
-
-      if (!matchedPrinter) {
-        // We will create the printer if it doesn't exist, or log it
-        throw new Error(`El número de serie ${result.id_serie} no está registrado en el inventario actual.`);
-      }
-
-      // Calculate new prediction dates
-      const tonerVal = result.toner_nivel ?? matchedPrinter.consumibles?.toner_nivel ?? 100;
-      const unitVal = result.unidad_imagen_nivel ?? matchedPrinter.consumibles?.unidad_imagen_nivel ?? 100;
-      const prediction = calcularFechasPredictivas(tonerVal, unitVal);
-
-      // Perform update on Firestore
-      const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", matchedPrinter.id_serie);
-      
-      const updateData = {
-        estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal),
-        observaciones: result.observaciones || matchedPrinter.observaciones,
-        "consumibles.toner_nivel": tonerVal,
-        "consumibles.unidad_imagen_nivel": unitVal,
-        "consumibles.ultima_lectura": new Date(),
-        prediccion: prediction
-      };
-
-      await updateDoc(docRef, updateData);
-
-      // Write to subcollection audit history
-      const historyColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", matchedPrinter.id_serie, "historial_lecturas");
-      await addDoc(historyColRef, {
-        toner_nivel: tonerVal,
-        unidad_imagen_nivel: unitVal,
-        estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal),
-        observaciones: result.observaciones || matchedPrinter.observaciones,
-        codigo_caso_cas: matchedPrinter.codigo_caso_cas || "",
-        fecha_lectura: new Date(),
-        tipo_actualizacion: "Gemini AI"
-      });
-
-      // Add AI Response message
-      setChatMessages(prev => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          sender: "ai",
-          text: `He procesado tu reporte. La base de datos Firestore ha sido actualizada exitosamente para el equipo **${matchedPrinter.modelo}** (S/N: ${matchedPrinter.id_serie}) en el área **${matchedPrinter.area_actual}**. 
-
-**Valores extraídos:**
-- Nivel de Tóner: ${tonerVal}% (Autonomía: ${prediction.dias_restantes_toner} días, Cambio est.: ${prediction.fecha_cambio_toner})
-- Unidad de Imagen: ${unitVal}% (Autonomía: ${prediction.dias_restantes_unidad} días, Cambio est.: ${prediction.fecha_cambio_unidad})
-- Criticidad: ${result.estado_criticidad}
-- Notas: "${result.observaciones || 'Sin observaciones'}"`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      // 1. Handle Stock Updates
+      if (action === "actualizar_stock") {
+        if (!result.stock_updates || result.stock_updates.length === 0) {
+          throw new Error("No se detectaron actualizaciones de stock válidas en el reporte.");
         }
-      ]);
+
+        const auditLogs = [];
+
+        for (const update of result.stock_updates) {
+          let modelToUpdate = update.modelo || "";
+
+          // If a serial number was provided instead of a model
+          if (!modelToUpdate && result.id_serie) {
+            const printerMatch = printers.find(p => p.id_serie.toLowerCase() === result.id_serie.toLowerCase());
+            if (printerMatch) {
+              modelToUpdate = printerMatch.modelo;
+            }
+          }
+
+          if (!modelToUpdate) {
+            modelToUpdate = "MX431ADN"; // fallback
+          }
+
+          // Normalize model name
+          let modeloNorm = "MX431ADN";
+          if (modelToUpdate.includes("632") || modelToUpdate === "632" || modelToUpdate.toLowerCase().includes("mx632")) {
+            modeloNorm = "MX632ADWE";
+          } else if (modelToUpdate.includes("722") || modelToUpdate === "722" || modelToUpdate.toLowerCase().includes("mx722")) {
+            modeloNorm = "MX722ADHE";
+          }
+
+          const insumo = update.insumo || "toner"; // toner, unidad_imagen or mantenimiento
+
+          const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "repuestos", modeloNorm);
+
+          // Find current stock values in our local state to merge
+          const matchedStock = repuestos.find(r => r.id === modeloNorm) || {
+            toner_hospital: 0,
+            toner_deposito: 0,
+            unidad_hospital: 0,
+            unidad_deposito: 0,
+            mantenimiento_hospital: 0,
+            mantenimiento_deposito: 0
+          };
+
+          const updateObj = {};
+          let logHospital = null;
+          let logDeposito = null;
+
+          if (insumo === "toner") {
+            if (update.cantidad_hospital !== undefined && update.cantidad_hospital !== null) {
+              updateObj.toner_hospital = Number(update.cantidad_hospital);
+              logHospital = updateObj.toner_hospital;
+            }
+            if (update.cantidad_deposito !== undefined && update.cantidad_deposito !== null) {
+              updateObj.toner_deposito = Number(update.cantidad_deposito);
+              logDeposito = updateObj.toner_deposito;
+            }
+            if (update.cantidad_hospital === undefined && update.cantidad_deposito === undefined) {
+              const qty = Number(update.cantidad !== undefined ? update.cantidad : 0);
+              updateObj.toner_hospital = qty;
+              logHospital = qty;
+            }
+          } else if (insumo === "mantenimiento") {
+            if (update.cantidad_hospital !== undefined && update.cantidad_hospital !== null) {
+              updateObj.mantenimiento_hospital = Number(update.cantidad_hospital);
+              logHospital = updateObj.mantenimiento_hospital;
+            }
+            if (update.cantidad_deposito !== undefined && update.cantidad_deposito !== null) {
+              updateObj.mantenimiento_deposito = Number(update.cantidad_deposito);
+              logDeposito = updateObj.mantenimiento_deposito;
+            }
+            if (update.cantidad_hospital === undefined && update.cantidad_deposito === undefined) {
+              const qty = Number(update.cantidad !== undefined ? update.cantidad : 0);
+              updateObj.mantenimiento_hospital = qty;
+              logHospital = qty;
+            }
+          } else {
+            if (update.cantidad_hospital !== undefined && update.cantidad_hospital !== null) {
+              updateObj.unidad_hospital = Number(update.cantidad_hospital);
+              logHospital = updateObj.unidad_hospital;
+            }
+            if (update.cantidad_deposito !== undefined && update.cantidad_deposito !== null) {
+              updateObj.unidad_deposito = Number(update.cantidad_deposito);
+              logDeposito = updateObj.unidad_deposito;
+            }
+            if (update.cantidad_hospital === undefined && update.cantidad_deposito === undefined) {
+              const qty = Number(update.cantidad !== undefined ? update.cantidad : 0);
+              updateObj.unidad_hospital = qty;
+              logHospital = qty;
+            }
+          }
+
+          await updateDoc(docRef, updateObj);
+
+          const labelInsumo = insumo === "toner" ? "Tóner" : insumo === "mantenimiento" ? "Kit Mantenimiento" : "Unidad Imagen";
+          const hVal = logHospital !== null ? logHospital : (insumo === "toner" ? (matchedStock.toner_hospital ?? 0) : insumo === "mantenimiento" ? (matchedStock.mantenimiento_hospital ?? 0) : (matchedStock.unidad_hospital ?? 0));
+          const dVal = logDeposito !== null ? logDeposito : (insumo === "toner" ? (matchedStock.toner_deposito ?? 0) : insumo === "mantenimiento" ? (matchedStock.mantenimiento_deposito ?? 0) : (matchedStock.unidad_deposito ?? 0));
+
+          auditLogs.push(`- **${modeloNorm}** (${labelInsumo}): Hospital = ${hVal}, Depósito = ${dVal}`);
+        }
+
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: "ai",
+            text: `📦 **Stock de Repuestos Actualizado:** He procesado el reporte de inventario de repuestos y actualizado Firestore.\n\n${auditLogs.join("\n")}\n\n*Notas: ${result.observaciones || 'Actualización de stock realizada.'}*`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+        setIsChatLoading(false);
+        return;
+      }
+
+      // 2. Handle Printer Actions
+      if (!result.id_serie && !result.area_actual) {
+        throw new Error("La IA no pudo determinar el Número de Serie ni el Área del dispositivo.");
+      }
+
+      const idSerieUpper = result.id_serie ? result.id_serie.toUpperCase() : "";
+      let matchedPrinter = null;
+
+      if (idSerieUpper) {
+        matchedPrinter = printers.find(p => p.id_serie.toUpperCase() === idSerieUpper);
+
+        // Fallback: match by suffix if the technician provided the last 4-6 characters
+        if (!matchedPrinter && idSerieUpper.length <= 6) {
+          matchedPrinter = printers.find(p => p.id_serie.toUpperCase().endsWith(idSerieUpper));
+        }
+      }
+
+      // Fallback: Match by area_actual if id_serie is missing or not matched
+      if (!matchedPrinter && result.area_actual) {
+        const normalizeArea = (str) => {
+          if (!str) return "";
+          let clean = str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+          clean = clean.replace(/^(c\.e\s*|c\.\s*e\.\s*|unidad\s+de\s+|unidad\s+)/g, "");
+          return clean.trim();
+        };
+
+        const targetAreaNorm = normalizeArea(result.area_actual);
+
+        if (targetAreaNorm) {
+          // 1. Prioritize exact match after prefix stripping (e.g. "Oncología" matches "C.E Oncología")
+          matchedPrinter = printers.find(p => normalizeArea(p.area_actual) === targetAreaNorm);
+
+          // 2. Fallback to contains match if not found exactly (e.g. "Hospitalizacion Oncologia")
+          if (!matchedPrinter) {
+            matchedPrinter = printers.find(p => normalizeArea(p.area_actual).includes(targetAreaNorm));
+          }
+        }
+      }
+
+      if (!matchedPrinter && !idSerieUpper) {
+        throw new Error("La IA no pudo determinar el Número de Serie del dispositivo. Por favor, asegúrese de que el reporte incluya el número de serie o el área exacta.");
+      }
+
+      // Determine action (crear, actualizar, eliminar)
+      action = result.accion || (matchedPrinter ? "actualizar" : "crear");
+
+      if (action === "eliminar") {
+        if (!matchedPrinter) {
+          throw new Error(`No se puede eliminar: El número de serie ${idSerieUpper} no está registrado en el inventario.`);
+        }
+
+        const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", matchedPrinter.id_serie);
+        await deleteDoc(docRef);
+
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: "ai",
+            text: `🗑️ **Impresora Eliminada:** El equipo **${matchedPrinter.modelo}** (S/N: ${matchedPrinter.id_serie}) en el área **${matchedPrinter.area_actual}** ha sido removido de la base de datos Firestore exitosamente.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+        setIsChatLoading(false);
+        return;
+      }
+
+      if (action === "crear") {
+        if (matchedPrinter) {
+          throw new Error(`El número de serie ${idSerieUpper} ya existe en el inventario. Se omitió la creación.`);
+        }
+
+        const tonerVal = result.toner_nivel !== undefined ? Number(result.toner_nivel) : 100;
+        const unitVal = result.unidad_imagen_nivel !== undefined ? Number(result.unidad_imagen_nivel) : 100;
+        const maintVal = result.mantenimiento_kit_nivel !== undefined ? Number(result.mantenimiento_kit_nivel) : 100;
+        const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+
+        const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", idSerieUpper);
+
+        const newPrinter = {
+          modelo: result.modelo || "MX431ADN",
+          area_actual: result.area_actual || "Soporte",
+          codigo_caso_cas: result.codigo_caso_cas || "",
+          estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal, maintVal),
+          observaciones: result.observaciones || "Registrado por la IA de asistencia",
+          ubicacion_entidad: result.ubicacion_entidad || "Hospital",
+          consumibles: {
+            toner_nivel: tonerVal,
+            unidad_imagen_nivel: unitVal,
+            mantenimiento_kit_nivel: maintVal,
+            ultima_lectura: new Date()
+          },
+          prediccion: prediction
+        };
+
+        await setDoc(docRef, newPrinter);
+
+        // Write to subcollection audit history
+        const historyColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", idSerieUpper, "historial_lecturas");
+        await addDoc(historyColRef, {
+          toner_nivel: tonerVal,
+          unidad_imagen_nivel: unitVal,
+          mantenimiento_kit_nivel: maintVal,
+          estado_criticidad: newPrinter.estado_criticidad,
+          observaciones: newPrinter.observaciones,
+          codigo_caso_cas: newPrinter.codigo_caso_cas,
+          ubicacion_entidad: newPrinter.ubicacion_entidad,
+          area_actual: newPrinter.area_actual,
+          fecha_lectura: new Date(),
+          tipo_actualizacion: "Gemini AI (Creado)"
+        });
+
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: "ai",
+            text: `➕ **Nueva Impresora Registrada:** Se ha guardado en Firestore el equipo **${newPrinter.modelo}** (S/N: ${idSerieUpper}) en el área **${newPrinter.area_actual}**.
+            
+**Valores iniciales:**
+- Nivel de Tóner: ${tonerVal}% (Cambio est.: ${prediction.fecha_cambio_toner})
+- Unidad de Imagen: ${unitVal}% (Cambio est.: ${prediction.fecha_cambio_unidad})
+- Kit de Mantenimiento: ${maintVal}% (Cambio est.: ${prediction.fecha_cambio_mantenimiento})
+- Criticidad: ${newPrinter.estado_criticidad}
+- Notas: "${newPrinter.observaciones}"`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+        setIsChatLoading(false);
+        return;
+      }
+
+      // Default: Action is actualizar
+      if (!matchedPrinter) {
+        // Fallback: If AI wanted to update but it doesn't exist, create it automatically
+        const tonerVal = result.toner_nivel !== undefined ? Number(result.toner_nivel) : 100;
+        const unitVal = result.unidad_imagen_nivel !== undefined ? Number(result.unidad_imagen_nivel) : 100;
+        const maintVal = result.mantenimiento_kit_nivel !== undefined ? Number(result.mantenimiento_kit_nivel) : 100;
+        const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+
+        const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", idSerieUpper);
+        const newPrinter = {
+          modelo: result.modelo || "MX431ADN",
+          area_actual: result.area_actual || "Soporte",
+          codigo_caso_cas: result.codigo_caso_cas || "",
+          estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal, maintVal),
+          observaciones: result.observaciones || "Auto-creado tras reporte",
+          ubicacion_entidad: result.ubicacion_entidad || "Hospital",
+          consumibles: {
+            toner_nivel: tonerVal,
+            unidad_imagen_nivel: unitVal,
+            mantenimiento_kit_nivel: maintVal,
+            ultima_lectura: new Date()
+          },
+          prediccion: prediction
+        };
+
+        await setDoc(docRef, newPrinter);
+
+        // Write history
+        const historyColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", idSerieUpper, "historial_lecturas");
+        await addDoc(historyColRef, {
+          toner_nivel: tonerVal,
+          unidad_imagen_nivel: unitVal,
+          mantenimiento_kit_nivel: maintVal,
+          estado_criticidad: newPrinter.estado_criticidad,
+          observaciones: newPrinter.observaciones,
+          codigo_caso_cas: newPrinter.codigo_caso_cas,
+          ubicacion_entidad: newPrinter.ubicacion_entidad,
+          area_actual: newPrinter.area_actual,
+          fecha_lectura: new Date(),
+          tipo_actualizacion: "Gemini AI (Auto-creado)"
+        });
+
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: "ai",
+            text: `➕ **Impresora Auto-registrada:** El S/N **${idSerieUpper}** no existía en el inventario, por lo que fue creada en Firestore automáticamente.
+            
+**Valores:**
+- Modelo: ${newPrinter.modelo}
+- Área: ${newPrinter.area_actual}
+- Nivel de Tóner: ${tonerVal}% (Cambio est.: ${prediction.fecha_cambio_toner})
+- Unidad de Imagen: ${unitVal}% (Cambio est.: ${prediction.fecha_cambio_unidad})
+- Kit de Mantenimiento: ${maintVal}% (Cambio est.: ${prediction.fecha_cambio_mantenimiento})
+- Criticidad: ${newPrinter.estado_criticidad}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+      } else {
+        // Standard Update
+        const tonerVal = result.toner_nivel !== undefined ? Number(result.toner_nivel) : matchedPrinter.consumibles?.toner_nivel ?? 100;
+        const unitVal = result.unidad_imagen_nivel !== undefined ? Number(result.unidad_imagen_nivel) : matchedPrinter.consumibles?.unidad_imagen_nivel ?? 100;
+        const maintVal = result.mantenimiento_kit_nivel !== undefined ? Number(result.mantenimiento_kit_nivel) : matchedPrinter.consumibles?.mantenimiento_kit_nivel ?? 100;
+        const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+
+        const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", matchedPrinter.id_serie);
+
+        const updateData = {
+          modelo: result.modelo || matchedPrinter.modelo,
+          area_actual: result.area_actual || matchedPrinter.area_actual,
+          ubicacion_entidad: result.ubicacion_entidad || matchedPrinter.ubicacion_entidad || "Hospital",
+          codigo_caso_cas: result.codigo_caso_cas !== undefined ? result.codigo_caso_cas : matchedPrinter.codigo_caso_cas || "",
+          estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal, maintVal),
+          observaciones: result.observaciones || matchedPrinter.observaciones,
+          "consumibles.toner_nivel": tonerVal,
+          "consumibles.unidad_imagen_nivel": unitVal,
+          "consumibles.mantenimiento_kit_nivel": maintVal,
+          "consumibles.ultima_lectura": new Date(),
+          prediccion: prediction
+        };
+
+        await updateDoc(docRef, updateData);
+
+        // History
+        const historyColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", matchedPrinter.id_serie, "historial_lecturas");
+        await addDoc(historyColRef, {
+          toner_nivel: tonerVal,
+          unidad_imagen_nivel: unitVal,
+          mantenimiento_kit_nivel: maintVal,
+          estado_criticidad: updateData.estado_criticidad,
+          observaciones: updateData.observaciones,
+          codigo_caso_cas: updateData.codigo_caso_cas,
+          ubicacion_entidad: updateData.ubicacion_entidad,
+          area_actual: updateData.area_actual,
+          fecha_lectura: new Date(),
+          tipo_actualizacion: "Gemini AI"
+        });
+
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: "ai",
+            text: `🔄 **Impresora Actualizada:** El equipo **${matchedPrinter.modelo}** (S/N: ${matchedPrinter.id_serie}) ha sido actualizado exitosamente en Firestore.
+            
+**Valores modificados:**
+- Área: ${updateData.area_actual}
+- Nivel de Tóner: ${tonerVal}% (Autonomía: ${prediction.dias_restantes_toner} días)
+- Unidad de Imagen: ${unitVal}% (Autonomía: ${prediction.dias_restantes_unidad} días)
+- Kit de Mantenimiento: ${maintVal}% (Autonomía: ${prediction.dias_restantes_mantenimiento} días)
+- Criticidad: ${updateData.estado_criticidad}
+- Notas: "${updateData.observaciones || 'Sin observaciones'}"`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+      }
 
     } catch (error) {
       console.error("Chat message error:", error);
@@ -394,17 +1139,17 @@ export default function App() {
 
   // Filter printers list for Search and Category selection
   const filteredPrinters = printers.filter(p => {
-    const matchesSearch = p.id_serie.toLowerCase().includes(searchText.toLowerCase()) || 
-                          p.modelo.toLowerCase().includes(searchText.toLowerCase()) ||
-                          p.area_actual.toLowerCase().includes(searchText.toLowerCase());
-    
+    const matchesSearch = p.id_serie.toLowerCase().includes(searchText.toLowerCase()) ||
+      p.modelo.toLowerCase().includes(searchText.toLowerCase()) ||
+      p.area_actual.toLowerCase().includes(searchText.toLowerCase());
+
     if (filterCriticidad === "all") return matchesSearch;
     return matchesSearch && p.estado_criticidad === filterCriticidad;
   });
 
   return (
     <div className="bg-background text-on-background min-h-screen pb-24 font-body-md text-body-md overflow-x-hidden flex flex-col">
-      
+
       {/* TopAppBar */}
       <header className="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-surface/90 backdrop-blur-md border-b border-outline-variant shadow-sm">
         <div className="flex items-center gap-3 cursor-pointer active:opacity-70" onClick={() => setCurrentTab("dashboard")}>
@@ -416,7 +1161,7 @@ export default function App() {
             <span className="material-symbols-outlined text-sm animate-pulse-subtle">cloud_done</span>
             <span className="text-[10px] font-bold uppercase tracking-wider">Online</span>
           </div>
-          <button 
+          <button
             onClick={() => setCurrentTab("settings")}
             className={`w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors ${currentTab === "settings" ? "bg-primary-fixed text-primary" : "text-on-surface-variant"}`}
           >
@@ -427,7 +1172,7 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="pt-20 px-4 max-w-lg mx-auto w-full flex-grow space-y-6">
-        
+
         {/* VIEW: DASHBOARD */}
         {currentTab === "dashboard" && (
           <div className="space-y-6 animate-fade-in">
@@ -440,11 +1185,11 @@ export default function App() {
                 <p className="text-on-surface-variant font-medium">Total Impresoras</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold text-primary">{loadingPrinters ? "..." : kpiTotal}</span>
-                  <span className="text-primary/60 text-xs font-semibold">Equipos Activos</span>
+
                 </div>
               </div>
-              
-              <div 
+
+              <div
                 onClick={() => {
                   setFilterCriticidad("Crítico");
                   setCurrentTab("inventario");
@@ -457,8 +1202,8 @@ export default function App() {
                 </p>
                 <span className="text-3xl font-extrabold text-on-error-container">{loadingPrinters ? "..." : kpiCritical}</span>
               </div>
-              
-              <div 
+
+              <div
                 onClick={() => {
                   setFilterCriticidad("Advertencia");
                   setCurrentTab("inventario");
@@ -473,11 +1218,62 @@ export default function App() {
               </div>
             </section>
 
+            {/* Ubicación y Estados de Servicio Grid */}
+            <section className="bg-surface border border-outline-variant rounded-2xl p-4 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-outline uppercase tracking-wider flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">location_on</span>
+                Ubicación Física y Estado de Servicio
+              </h3>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Hospital Card */}
+                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-on-surface flex items-center gap-1">
+                      <span className="material-symbols-outlined text-primary text-sm">local_hospital</span>
+                      Hospital
+                    </span>
+                    <span className="text-lg font-black text-primary">{loadingPrinters ? "..." : kpiHospitalTotal}</span>
+                  </div>
+                  <div className="space-y-1.5 pt-2 border-t border-outline-variant/20">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-on-surface-variant flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                        En Servicio:
+                      </span>
+                      <span className="font-bold">{loadingPrinters ? "..." : kpiHospitalEnServicio}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-on-surface-variant flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse-subtle"></span>
+                        En Soporte:
+                      </span>
+                      <span className="font-bold">{loadingPrinters ? "..." : kpiHospitalEnSoporte}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* MUR Card */}
+                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-on-surface flex items-center gap-1">
+                      <span className="material-symbols-outlined text-secondary text-sm">corporate_fare</span>
+                      MUR
+                    </span>
+                    <span className="text-lg font-black text-secondary">{loadingPrinters ? "..." : kpiMurTotal}</span>
+                  </div>
+                  <p className="text-[10px] text-outline pt-2 border-t border-outline-variant/20 leading-tight">
+                    Equipos en taller/soporte externo de MUR.
+                  </p>
+                </div>
+              </div>
+            </section>
+
             {/* Quick Summary Section */}
             <section className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-headline-md text-lg text-on-background font-bold">Resumen de Alertas</h2>
-                <button 
+                <button
                   onClick={() => {
                     setFilterCriticidad("all");
                     setCurrentTab("inventario");
@@ -502,39 +1298,50 @@ export default function App() {
                     .filter(p => p.estado_criticidad !== "Estable")
                     .slice(0, 3)
                     .map((printer) => (
-                      <div 
+                      <div
                         key={printer.id_serie}
                         onClick={() => handleOpenEditModal(printer)}
-                        className={`p-4 border rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98] ${
-                          printer.estado_criticidad === "Crítico" 
-                            ? "bg-error-container/10 border-error/20" 
-                            : "bg-surface-container-lowest border-outline-variant"
-                        }`}
+                        className={`p-4 border rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98] ${printer.estado_criticidad === "Crítico"
+                          ? "bg-error-container/10 border-error/20"
+                          : "bg-surface-container-lowest border-outline-variant"
+                          }`}
                       >
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                              printer.estado_criticidad === "Crítico" 
-                                ? "bg-error-container text-error" 
+                            <div className="flex gap-1.5 flex-wrap items-center">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${printer.estado_criticidad === "Crítico"
+                                ? "bg-error-container text-error"
                                 : "bg-surface-variant text-outline"
-                            }`}>
-                              ID: {printer.id_serie}
-                            </span>
+                                }`}>
+                                S/N: {printer.id_serie}
+                              </span>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${(printer.ubicacion_entidad || "Hospital") === "Hospital"
+                                ? "bg-primary-fixed/30 text-primary border border-primary/10"
+                                : "bg-secondary-fixed/30 text-secondary border border-secondary/10"
+                                }`}>
+                                <span className="material-symbols-outlined text-[11px]">
+                                  {(printer.ubicacion_entidad || "Hospital") === "Hospital" ? "local_hospital" : "corporate_fare"}
+                                </span>
+                                {(printer.ubicacion_entidad || "Hospital") === "Hospital"
+                                  ? `Hospital (${printer.area_actual === "Soporte" ? "En Soporte" : "En Servicio"})`
+                                  : "MUR"
+                                }
+                              </span>
+                            </div>
                             <h3 className="font-bold text-base mt-1 text-on-background">{printer.modelo}</h3>
                             <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
                           </div>
-                          
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                            printer.estado_criticidad === "Crítico" 
-                              ? "bg-error-container text-error border-error/20 animate-pulse-subtle" 
-                              : "bg-tertiary-fixed text-tertiary border-tertiary/20"
-                          }`}>
+
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${printer.estado_criticidad === "Crítico"
+                            ? "bg-error-container text-error border-error/20 animate-pulse-subtle"
+                            : "bg-tertiary-fixed text-tertiary border-tertiary/20"
+                            }`}>
                             {printer.estado_criticidad === "Crítico" ? "Crítico" : "Bajo Suministro"}
                           </span>
                         </div>
 
                         {/* Progress Indicators */}
-                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-outline-variant/30">
+                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30">
                           <div className="space-y-1">
                             <div className="flex justify-between items-center text-[10px] font-bold">
                               <span className="text-outline">% TÓNER</span>
@@ -543,27 +1350,40 @@ export default function App() {
                               </span>
                             </div>
                             <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full rounded-full ${
-                                  printer.consumibles.toner_nivel <= 15 ? "bg-error" : "bg-primary"
-                                }`} 
+                              <div
+                                className={`h-full rounded-full ${printer.consumibles.toner_nivel <= 15 ? "bg-error" : "bg-primary"
+                                  }`}
                                 style={{ width: `${printer.consumibles.toner_nivel}%` }}
                               ></div>
                             </div>
                           </div>
                           <div className="space-y-1">
                             <div className="flex justify-between items-center text-[10px] font-bold">
-                              <span className="text-outline">% UNID. IMAG.</span>
+                              <span className="text-outline">% U. IMAG.</span>
                               <span className={printer.consumibles.unidad_imagen_nivel <= 15 ? "text-error" : "text-outline"}>
                                 {printer.consumibles.unidad_imagen_nivel}%
                               </span>
                             </div>
                             <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full rounded-full ${
-                                  printer.consumibles.unidad_imagen_nivel <= 15 ? "bg-error" : "bg-secondary"
-                                }`} 
+                              <div
+                                className={`h-full rounded-full ${printer.consumibles.unidad_imagen_nivel <= 15 ? "bg-error" : "bg-secondary"
+                                  }`}
                                 style={{ width: `${printer.consumibles.unidad_imagen_nivel}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[10px] font-bold">
+                              <span className="text-outline">% KIT MANT.</span>
+                              <span className={(printer.consumibles.mantenimiento_kit_nivel ?? 100) <= 15 ? "text-error" : "text-outline"}>
+                                {printer.consumibles.mantenimiento_kit_nivel ?? 100}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${(printer.consumibles.mantenimiento_kit_nivel ?? 100) <= 15 ? "bg-error" : "bg-tertiary"
+                                  }`}
+                                style={{ width: `${printer.consumibles.mantenimiento_kit_nivel ?? 100}%` }}
                               ></div>
                             </div>
                           </div>
@@ -575,7 +1395,7 @@ export default function App() {
             </section>
 
             {/* Quick Gemini Callout */}
-            <section 
+            <section
               onClick={() => setCurrentTab("chat")}
               className="p-5 bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-2xl shadow-md cursor-pointer hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-between"
             >
@@ -588,6 +1408,147 @@ export default function App() {
               </div>
               <span className="material-symbols-outlined text-2xl opacity-80">chevron_right</span>
             </section>
+
+            {/* Stock / Repuestos Section */}
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-headline-md text-lg text-on-background font-bold flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">inventory_2</span>
+                  Repuestos en Stock
+                </h2>
+                <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">
+                  Depósito & Hospital
+                </span>
+              </div>
+
+              <div className="bg-surface border border-outline-variant rounded-2xl p-4 shadow-sm space-y-4">
+                {repuestos.length === 0 ? (
+                  <p className="text-xs text-outline text-center py-4">Cargando stock...</p>
+                ) : (
+                  repuestos.map(item => (
+                    <div key={item.id} className="border-b border-outline-variant/30 last:border-0 pb-3 last:pb-0 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-sm text-on-background">{item.modelo}</span>
+                        <span className="text-[10px] text-outline font-medium">Stock de Repuestos</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        {/* Toner Stock Card */}
+                        <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
+                          <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Tóner</span>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-on-surface-variant">Hosp:</span>
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "toner_hospital", (item.toner_hospital || 0) - 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >-</button>
+                              <span className="font-bold min-w-[12px] text-center">{item.toner_hospital ?? 0}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "toner_hospital", (item.toner_hospital || 0) + 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >+</button>
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-on-surface-variant">Dep:</span>
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "toner_deposito", (item.toner_deposito || 0) - 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >-</button>
+                              <span className="font-bold min-w-[12px] text-center text-primary">{item.toner_deposito ?? 0}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "toner_deposito", (item.toner_deposito || 0) + 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >+</button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Image Unit Stock Card */}
+                        <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
+                          <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Unid. Imagen</span>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-on-surface-variant">Hosp:</span>
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "unidad_hospital", (item.unidad_hospital || 0) - 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >-</button>
+                              <span className="font-bold min-w-[12px] text-center">{item.unidad_hospital ?? 0}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "unidad_hospital", (item.unidad_hospital || 0) + 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >+</button>
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-on-surface-variant">Dep:</span>
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "unidad_deposito", (item.unidad_deposito || 0) - 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >-</button>
+                              <span className="font-bold min-w-[12px] text-center text-secondary">{item.unidad_deposito ?? 0}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "unidad_deposito", (item.unidad_deposito || 0) + 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >+</button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Maintenance Kit Stock Card */}
+                        <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
+                          <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Kit Mant.</span>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-on-surface-variant">Hosp:</span>
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "mantenimiento_hospital", (item.mantenimiento_hospital || 0) - 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >-</button>
+                              <span className="font-bold min-w-[12px] text-center">{item.mantenimiento_hospital ?? 0}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "mantenimiento_hospital", (item.mantenimiento_hospital || 0) + 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >+</button>
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-on-surface-variant">Dep:</span>
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "mantenimiento_deposito", (item.mantenimiento_deposito || 0) - 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >-</button>
+                              <span className="font-bold min-w-[12px] text-center text-tertiary">{item.mantenimiento_deposito ?? 0}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateManualStock(item.id, "mantenimiento_deposito", (item.mantenimiento_deposito || 0) + 1)}
+                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                              >+</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
           </div>
         )}
 
@@ -596,21 +1557,30 @@ export default function App() {
           <div className="space-y-5 animate-fade-in">
             {/* Header and filters */}
             <div className="space-y-3">
-              <h2 className="font-headline-md text-xl text-on-background font-bold">Inventario de Impresoras</h2>
-              
+              <div className="flex justify-between items-center">
+                <h2 className="font-headline-md text-xl text-on-background font-bold">Inventario de Impresoras</h2>
+                <button
+                  onClick={handleOpenCreateModal}
+                  className="flex items-center gap-1 px-3.5 py-2 bg-primary text-on-primary rounded-xl font-bold text-xs hover:bg-primary-container active:scale-95 transition-all shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-xs">add</span>
+                  Registrar Impresora
+                </button>
+              </div>
+
               <div className="flex flex-col gap-2">
                 {/* Search box */}
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-outline material-symbols-outlined">search</span>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Buscar por serie, modelo o área..."
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
                     className="w-full bg-surface-container-low border-outline-variant rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-primary focus:border-primary font-body-md"
                   />
                   {searchText && (
-                    <button 
+                    <button
                       onClick={() => setSearchText("")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-outline material-symbols-outlined text-sm"
                     >
@@ -630,15 +1600,64 @@ export default function App() {
                     <button
                       key={tab.id}
                       onClick={() => setFilterCriticidad(tab.id)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border shrink-0 ${
-                        filterCriticidad === tab.id
-                          ? "bg-primary text-on-primary border-primary"
-                          : "bg-surface-container-lowest text-on-surface-variant border-outline-variant"
-                      }`}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border shrink-0 ${filterCriticidad === tab.id
+                        ? "bg-primary text-on-primary border-primary"
+                        : "bg-surface-container-lowest text-on-surface-variant border-outline-variant"
+                        }`}
                     >
                       {tab.label}
                     </button>
                   ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Active Search/Filter Summary Counter */}
+            <div className="bg-surface-container-low border border-outline-variant/60 rounded-2xl p-3.5 shadow-sm space-y-2.5 text-xs animate-fade-in">
+              <div className="flex justify-between items-center border-b border-outline-variant/20 pb-2">
+                <span className="font-bold text-on-surface flex items-center gap-1.5 text-xs uppercase tracking-wider text-outline">
+                  <span className="material-symbols-outlined text-sm text-primary">analytics</span>
+                  {searchText.trim() !== "" ? "Resultado de Búsqueda" : "Resumen del Listado"}
+                </span>
+                <span className="bg-primary-fixed text-primary px-2.5 py-0.5 rounded-full font-extrabold text-[10px]">
+                  {filteredPrinters.length} Impresora{filteredPrinters.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-[11px]">
+                {/* Breakdown by Criticidad */}
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Por Estado</span>
+                  <div className="flex flex-wrap gap-1">
+                    <span className="bg-error-container/20 text-error px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                      Críticos: {filteredPrinters.filter(p => p.estado_criticidad === "Crítico").length}
+                    </span>
+                    <span className="bg-tertiary-fixed/20 text-tertiary px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                      Adver: {filteredPrinters.filter(p => p.estado_criticidad === "Advertencia").length}
+                    </span>
+                    <span className="bg-green-100/50 text-green-700 px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                      Estab: {filteredPrinters.filter(p => p.estado_criticidad === "Estable").length}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Breakdown by Model */}
+                <div className="space-y-1 border-l border-outline-variant/20 pl-3">
+                  <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Por Modelo</span>
+                  <div className="space-y-0.5 text-on-surface-variant font-mono">
+                    <div className="flex justify-between">
+                      <span>MX431ADN:</span>
+                      <span className="font-bold">{filteredPrinters.filter(p => p.modelo === "MX431ADN").length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>MX632ADWE:</span>
+                      <span className="font-bold">{filteredPrinters.filter(p => p.modelo === "MX632ADWE").length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>MX722ADHE:</span>
+                      <span className="font-bold">{filteredPrinters.filter(p => p.modelo === "MX722ADHE").length}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -659,14 +1678,14 @@ export default function App() {
                   const unit = printer.consumibles?.unidad_imagen_nivel ?? 100;
 
                   return (
-                    <div 
+                    <div
                       key={printer.id_serie}
                       onClick={() => handleOpenEditModal(printer)}
                       className="p-4 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98]"
                     >
                       <div className="flex justify-between items-start">
                         <div>
-                          <div className="flex gap-1 items-center">
+                          <div className="flex gap-1.5 flex-wrap items-center">
                             <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">
                               S/N: {printer.id_serie}
                             </span>
@@ -675,28 +1694,39 @@ export default function App() {
                                 CAS: {printer.codigo_caso_cas}
                               </span>
                             )}
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${(printer.ubicacion_entidad || "Hospital") === "Hospital"
+                              ? "bg-primary-fixed/30 text-primary border border-primary/10"
+                              : "bg-secondary-fixed/30 text-secondary border border-secondary/10"
+                              }`}>
+                              <span className="material-symbols-outlined text-[11px]">
+                                {(printer.ubicacion_entidad || "Hospital") === "Hospital" ? "local_hospital" : "corporate_fare"}
+                              </span>
+                              {(printer.ubicacion_entidad || "Hospital") === "Hospital"
+                                ? `Hospital (${printer.area_actual === "Soporte" ? "En Soporte" : "En Servicio"})`
+                                : "MUR"
+                              }
+                            </span>
                           </div>
                           <h3 className="font-bold text-base mt-1 text-on-background">{printer.modelo}</h3>
                           <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
                         </div>
-                        
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                          printer.estado_criticidad === "Crítico" 
-                            ? "bg-error-container text-error border-error/20 animate-pulse-subtle" 
-                            : printer.estado_criticidad === "Advertencia"
+
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${printer.estado_criticidad === "Crítico"
+                          ? "bg-error-container text-error border-error/20 animate-pulse-subtle"
+                          : printer.estado_criticidad === "Advertencia"
                             ? "bg-tertiary-fixed text-tertiary border-tertiary/20"
                             : "bg-green-100 text-green-800 border-green-200"
-                        }`}>
-                          {printer.estado_criticidad === "Crítico" 
-                            ? "Crítico" 
-                            : printer.estado_criticidad === "Advertencia" 
-                            ? "Advertencia" 
-                            : "Estable"}
+                          }`}>
+                          {printer.estado_criticidad === "Crítico"
+                            ? "Crítico"
+                            : printer.estado_criticidad === "Advertencia"
+                              ? "Advertencia"
+                              : "Estable"}
                         </span>
                       </div>
 
                       {/* Consumable Levels */}
-                      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-outline-variant/30">
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30">
                         <div className="space-y-1">
                           <div className="flex justify-between items-center text-[10px] font-bold">
                             <span className="text-outline">% TÓNER</span>
@@ -705,27 +1735,40 @@ export default function App() {
                             </span>
                           </div>
                           <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full ${
-                                toner <= 15 ? "bg-error" : "bg-primary"
-                              }`} 
+                            <div
+                              className={`h-full rounded-full ${toner <= 15 ? "bg-error" : "bg-primary"
+                                }`}
                               style={{ width: `${toner}%` }}
                             ></div>
                           </div>
                         </div>
                         <div className="space-y-1">
                           <div className="flex justify-between items-center text-[10px] font-bold">
-                            <span className="text-outline">% UNID. IMAG.</span>
+                            <span className="text-outline">% U. IMAG.</span>
                             <span className={unit <= 15 ? "text-error" : "text-outline"}>
                               {unit}%
                             </span>
                           </div>
                           <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full ${
-                                unit <= 15 ? "bg-error" : "bg-secondary"
-                              }`} 
+                            <div
+                              className={`h-full rounded-full ${unit <= 15 ? "bg-error" : "bg-secondary"
+                                }`}
                               style={{ width: `${unit}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center text-[10px] font-bold">
+                            <span className="text-outline">% KIT MANT.</span>
+                            <span className={(printer.consumibles?.mantenimiento_kit_nivel ?? 100) <= 15 ? "text-error" : "text-outline"}>
+                              {printer.consumibles?.mantenimiento_kit_nivel ?? 100}%
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${(printer.consumibles?.mantenimiento_kit_nivel ?? 100) <= 15 ? "bg-error" : "bg-tertiary"
+                                }`}
+                              style={{ width: `${printer.consumibles?.mantenimiento_kit_nivel ?? 100}%` }}
                             ></div>
                           </div>
                         </div>
@@ -746,6 +1789,14 @@ export default function App() {
                               {printer.prediccion.fecha_cambio_unidad} ({printer.prediccion.dias_restantes_unidad} días)
                             </span>
                           </div>
+                          {printer.prediccion.fecha_cambio_mantenimiento && (
+                            <div className="flex justify-between">
+                              <span>Estimación cambio Kit Mant.:</span>
+                              <span className="font-semibold text-tertiary">
+                                {printer.prediccion.fecha_cambio_mantenimiento} ({printer.prediccion.dias_restantes_mantenimiento} días)
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -771,27 +1822,26 @@ export default function App() {
                 <span className="material-symbols-outlined animate-pulse-subtle">smart_toy</span>
                 <h2 className="font-headline-md text-base font-bold">SAMI-Lexmark AI</h2>
               </div>
-              <span className="text-[10px] font-label-sm opacity-80 uppercase tracking-widest">Gemini 2.5 Flash</span>
+              <span className="text-[10px] font-label-sm opacity-80 uppercase tracking-widest">Gemini 1.5 Flash</span>
             </div>
 
             {/* Message History */}
             <div className="flex-1 p-4 space-y-4 overflow-y-auto scrollbar-hide flex flex-col">
               {chatMessages.map((msg) => (
-                <div 
+                <div
                   key={msg.id}
                   className={`max-w-[85%] space-y-1 ${msg.sender === "user" ? "self-end" : "self-start"}`}
                 >
-                  <div className={`p-3 rounded-2xl shadow-sm text-sm ${
-                    msg.sender === "user" 
-                      ? "bg-primary text-on-primary rounded-tr-none" 
-                      : "bg-surface-container-high text-on-surface-variant rounded-tl-none border border-outline-variant"
-                  }`}>
+                  <div className={`p-3 rounded-2xl shadow-sm text-sm ${msg.sender === "user"
+                    ? "bg-primary text-on-primary rounded-tr-none"
+                    : "bg-surface-container-high text-on-surface-variant rounded-tl-none border border-outline-variant"
+                    }`}>
                     {msg.image && (
                       <div className="mb-2 relative rounded-lg overflow-hidden border border-black/10 max-h-40">
                         <img src={msg.image} alt="Adjunto técnico" className="w-full object-cover" />
                       </div>
                     )}
-                    
+
                     {/* Render message formatting */}
                     <div className="whitespace-pre-line leading-relaxed">
                       {msg.text}
@@ -811,7 +1861,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-              
+
               <div ref={chatEndRef} />
             </div>
 
@@ -823,8 +1873,8 @@ export default function App() {
                     <img src={chatImage.preview} alt="Vista previa" className="w-10 h-10 object-cover rounded-md border border-outline-variant" />
                     <span className="text-xs font-medium text-on-surface-variant">Foto adjuntada</span>
                   </div>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={removeAttachedImage}
                     className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-container-high text-error"
                   >
@@ -834,7 +1884,7 @@ export default function App() {
               )}
 
               <div className="flex flex-col gap-2">
-                <textarea 
+                <textarea
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   placeholder="Detalla reporte de consumibles o sube imagen..."
@@ -846,32 +1896,63 @@ export default function App() {
                     }
                   }}
                 />
-                
-                <div className="flex gap-2">
-                  <input 
-                    type="file" 
-                    accept="image/*" 
+
+                  <input
+                    type="file"
+                    accept="image/*"
                     onChange={handleImageChange}
                     ref={fileInputRef}
-                    className="hidden" 
+                    className="hidden"
                   />
-                  <button 
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-secondary-container text-on-secondary-container rounded-xl font-bold text-sm hover:bg-secondary-container/80 active:scale-95 transition-all"
-                  >
-                    <span className="material-symbols-outlined text-lg">add_a_photo</span>
-                    Adjuntar Foto
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={(!chatInput.trim() && !chatImage) || isChatLoading}
-                    className="px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary-container disabled:opacity-50 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
-                  >
-                    <span>Enviar</span>
-                    <span className="material-symbols-outlined text-sm">send</span>
-                  </button>
-                </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageChange}
+                    ref={cameraInputRef}
+                    className="hidden"
+                  />
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={handleExcelUpload}
+                    ref={excelFileInputRef}
+                    className="hidden"
+                  />
+                  <div className="grid grid-cols-4 gap-1.5 w-full">
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-1.5 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]"
+                    >
+                      <span className="material-symbols-outlined text-base">photo_camera</span>
+                      <span>Tomar Foto</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-1.5 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]"
+                    >
+                      <span className="material-symbols-outlined text-base">image</span>
+                      <span>Galería</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => excelFileInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-1.5 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]"
+                    >
+                      <span className="material-symbols-outlined text-base">upload_file</span>
+                      <span>Excel IA</span>
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={(!chatInput.trim() && !chatImage) || isChatLoading}
+                      className="flex flex-col items-center justify-center gap-1.5 py-2 px-1 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary-container disabled:opacity-50 active:scale-95 transition-all text-[10px] shadow-md"
+                    >
+                      <span className="material-symbols-outlined text-base">send</span>
+                      <span>Enviar</span>
+                    </button>
+                  </div>
               </div>
             </form>
           </div>
@@ -893,7 +1974,7 @@ export default function App() {
                 </div>
               ) : (
                 generalHistory.map((log, idx) => (
-                  <div 
+                  <div
                     key={idx}
                     className="p-4 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-2"
                   >
@@ -907,7 +1988,7 @@ export default function App() {
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30 text-xs">
+                    <div className="grid grid-cols-4 gap-2 pt-2 border-t border-outline-variant/30 text-xs">
                       <div>
                         <span className="text-[9px] font-bold text-outline block uppercase">Tóner</span>
                         <span className={`font-semibold ${log.toner_nivel <= 15 ? 'text-error' : 'text-on-surface'}`}>
@@ -921,10 +2002,15 @@ export default function App() {
                         </span>
                       </div>
                       <div>
+                        <span className="text-[9px] font-bold text-outline block uppercase">Kit Mant.</span>
+                        <span className={`font-semibold ${(log.mantenimiento_kit_nivel ?? 100) <= 15 ? 'text-error' : 'text-on-surface'}`}>
+                          {log.mantenimiento_kit_nivel ?? 100}%
+                        </span>
+                      </div>
+                      <div>
                         <span className="text-[9px] font-bold text-outline block uppercase">Criticidad</span>
-                        <span className={`font-semibold ${
-                          log.estado_criticidad === "Crítico" ? "text-error" : log.estado_criticidad === "Advertencia" ? "text-tertiary" : "text-green-600"
-                        }`}>
+                        <span className={`font-semibold ${log.estado_criticidad === "Crítico" ? "text-error" : log.estado_criticidad === "Advertencia" ? "text-tertiary" : "text-green-600"
+                          }`}>
                           {log.estado_criticidad}
                         </span>
                       </div>
@@ -947,20 +2033,20 @@ export default function App() {
         {currentTab === "settings" && (
           <div className="space-y-5 animate-fade-in">
             <h2 className="font-headline-md text-xl text-on-background font-bold">Ajustes del Sistema</h2>
-            
+
             <form onSubmit={handleSaveApiKey} className="p-5 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-4">
               <h3 className="font-bold text-sm text-primary flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-base">api</span>
                 Clave API de Gemini
               </h3>
-              
+
               <p className="text-xs text-on-surface-variant">
                 Dado que los reportes de campo y el análisis multimodal utilizan la API de Gemini, puedes configurar tu API Key aquí. Se almacena localmente en este navegador.
               </p>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-outline uppercase tracking-wider block">Gemini API Key</label>
-                <input 
+                <input
                   type="password"
                   value={apiKeyInput}
                   onChange={(e) => setApiKeyInput(e.target.value)}
@@ -976,7 +2062,7 @@ export default function App() {
                 </div>
               )}
 
-              <button 
+              <button
                 type="submit"
                 className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl shadow-md hover:bg-primary-container active:scale-95 transition-all text-sm"
               >
@@ -989,7 +2075,7 @@ export default function App() {
               <div className="text-xs space-y-1.5 text-on-surface-variant font-mono">
                 <p><strong>Proyecto:</strong> SAMI-Lexmark (Cayetano Heredia)</p>
                 <p><strong>Firestore DB:</strong> sami-lexmark (Cloud)</p>
-                <p><strong>Modelo IA:</strong> gemini-2.5-flash-preview-09-2025</p>
+                <p><strong>Modelo IA:</strong> gemini-1.5-flash</p>
                 <p><strong>Ciclo Autonomía:</strong> 45 Días corridos (Lineal)</p>
               </div>
             </div>
@@ -1000,85 +2086,85 @@ export default function App() {
 
       {/* BottomNavBar */}
       <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface border-t border-outline-variant shadow-lg rounded-t-xl max-w-lg mx-auto left-1/2 -translate-x-1/2">
-        <button 
+        <button
           onClick={() => {
             setFilterCriticidad("all");
             setCurrentTab("dashboard");
           }}
-          className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${
-            currentTab === "dashboard" 
-              ? "bg-secondary-container text-on-secondary-container font-semibold" 
-              : "text-on-surface-variant hover:bg-surface-container-low"
-          }`}
+          className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${currentTab === "dashboard"
+            ? "bg-secondary-container text-on-secondary-container font-semibold"
+            : "text-on-surface-variant hover:bg-surface-container-low"
+            }`}
         >
           <span className="material-symbols-outlined" style={{ fontVariationSettings: currentTab === "dashboard" ? "'FILL' 1" : "'FILL' 0" }}>dashboard</span>
           <span className="font-label-sm text-[10px]">Dashboard</span>
         </button>
-        
-        <button 
+
+        <button
           onClick={() => {
             setFilterCriticidad("all");
             setCurrentTab("inventario");
           }}
-          className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${
-            currentTab === "inventario" 
-              ? "bg-secondary-container text-on-secondary-container font-semibold" 
-              : "text-on-surface-variant hover:bg-surface-container-low"
-          }`}
+          className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${currentTab === "inventario"
+            ? "bg-secondary-container text-on-secondary-container font-semibold"
+            : "text-on-surface-variant hover:bg-surface-container-low"
+            }`}
         >
           <span className="material-symbols-outlined" style={{ fontVariationSettings: currentTab === "inventario" ? "'FILL' 1" : "'FILL' 0" }}>inventory_2</span>
           <span className="font-label-sm text-[10px]">Inventario</span>
         </button>
-        
-        <button 
+
+        <button
           onClick={() => setCurrentTab("chat")}
-          className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${
-            currentTab === "chat" 
-              ? "bg-secondary-container text-on-secondary-container font-semibold" 
-              : "text-on-surface-variant hover:bg-surface-container-low"
-          }`}
+          className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${currentTab === "chat"
+            ? "bg-secondary-container text-on-secondary-container font-semibold"
+            : "text-on-surface-variant hover:bg-surface-container-low"
+            }`}
         >
           <span className="material-symbols-outlined" style={{ fontVariationSettings: currentTab === "chat" ? "'FILL' 1" : "'FILL' 0" }}>smart_toy</span>
           <span className="font-label-sm text-[10px]">Chat IA</span>
         </button>
-        
-        <button 
+
+        <button
           onClick={() => setCurrentTab("historial")}
-          className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${
-            currentTab === "historial" 
-              ? "bg-secondary-container text-on-secondary-container font-semibold" 
-              : "text-on-surface-variant hover:bg-surface-container-low"
-          }`}
+          className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${currentTab === "historial"
+            ? "bg-secondary-container text-on-secondary-container font-semibold"
+            : "text-on-surface-variant hover:bg-surface-container-low"
+            }`}
         >
           <span className="material-symbols-outlined" style={{ fontVariationSettings: currentTab === "historial" ? "'FILL' 1" : "'FILL' 0" }}>history</span>
           <span className="font-label-sm text-[10px]">Historial</span>
         </button>
       </nav>
 
-      {/* EDIT MODAL DIALOGUE */}
-      {isModalOpen && selectedPrinter && (
+      {/* EDIT/CREATE MODAL DIALOGUE */}
+      {isModalOpen && (selectedPrinter || isCreateMode) && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center">
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/55 backdrop-blur-sm transition-opacity" onClick={handleCloseEditModal}></div>
-          
+
           {/* Modal Container */}
-          <form 
+          <form
             onSubmit={handleSavePrinterChanges}
             className="absolute bottom-0 left-0 w-full bg-surface rounded-t-3xl p-6 shadow-2xl transition-transform max-w-lg mx-auto left-1/2 -translate-x-1/2 flex flex-col max-h-[85vh] overflow-y-auto scrollbar-hide border border-outline-variant/30"
           >
             <div className="w-12 h-1 bg-outline-variant rounded-full mx-auto mb-6 shrink-0"></div>
-            
+
             <div className="flex justify-between items-center mb-6 shrink-0">
               <div>
-                <h2 className="font-headline-lg text-lg text-primary font-bold">Editar Lectura</h2>
-                <div className="flex gap-2 mt-1 flex-wrap">
-                  <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">ID: {selectedPrinter.id_serie}</span>
-                  <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">{selectedPrinter.modelo}</span>
-                </div>
+                <h2 className="font-headline-lg text-lg text-primary font-bold">
+                  {isCreateMode ? "Registrar Nueva Impresora" : "Editar Lectura"}
+                </h2>
+                {!isCreateMode && selectedPrinter && (
+                  <div className="flex gap-2 mt-1 flex-wrap">
+                    <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">S/N: {selectedPrinter.id_serie}</span>
+                    <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">{selectedPrinter.modelo}</span>
+                  </div>
+                )}
               </div>
-              <button 
+              <button
                 type="button"
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container-high active:scale-90" 
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container-high active:scale-90"
                 onClick={handleCloseEditModal}
               >
                 <span className="material-symbols-outlined text-lg">close</span>
@@ -1087,69 +2173,125 @@ export default function App() {
 
             {/* Fields */}
             <div className="space-y-4 mb-6 flex-grow">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Área de Ubicación</label>
-                <input 
-                  type="text" 
-                  value={editArea}
-                  onChange={(e) => setEditArea(e.target.value)}
-                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm" 
-                  placeholder="Ej. Soporte, Admisión..."
-                  required
-                />
+              {isCreateMode && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Número de Serie</label>
+                    <input
+                      type="text"
+                      value={editIdSerie}
+                      onChange={(e) => setEditIdSerie(e.target.value)}
+                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm uppercase"
+                      placeholder="Ej. 701924410D8X7"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Modelo</label>
+                    <select
+                      value={editModelo}
+                      onChange={(e) => setEditModelo(e.target.value)}
+                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
+                    >
+                      <option value="MX431ADN">MX431ADN</option>
+                      <option value="MX632ADWE">MX632ADWE</option>
+                      <option value="MX722ADHE">MX722ADHE</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Área de Ubicación</label>
+                  <input
+                    type="text"
+                    value={editArea}
+                    onChange={(e) => setEditArea(e.target.value)}
+                    className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
+                    placeholder="Ej. Soporte, Admisión..."
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Ubicación Física</label>
+                  <select
+                    value={editUbicacion}
+                    onChange={(e) => setEditUbicacion(e.target.value)}
+                    className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
+                  >
+                    <option value="Hospital">Hospital</option>
+                    <option value="MUR">MUR</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">% Tóner</label>
                   <div className="relative">
-                    <input 
-                      type="number" 
-                      min="0" 
-                      max="100" 
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
                       value={editToner}
                       onChange={(e) => setEditToner(Number(e.target.value))}
-                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 pr-10 focus:ring-primary focus:border-primary font-body-md text-sm"
+                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                       required
                     />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-outline font-bold text-xs">%</span>
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
                   </div>
                 </div>
-                
+
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">% Unidad Imagen</label>
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">% U. Imagen</label>
                   <div className="relative">
-                    <input 
-                      type="number" 
-                      min="0" 
-                      max="100" 
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
                       value={editUnit}
                       onChange={(e) => setEditUnit(Number(e.target.value))}
-                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 pr-10 focus:ring-primary focus:border-primary font-body-md text-sm"
+                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                       required
                     />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-outline font-bold text-xs">%</span>
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">% Kit Mant.</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={editMantenimiento}
+                      onChange={(e) => setEditMantenimiento(Number(e.target.value))}
+                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
+                      required
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Código de Caso CAS</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editCasCode}
                   onChange={(e) => setEditCasCode(e.target.value)}
-                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm" 
+                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
                   placeholder="Ej. CAS-6013278-V6N2C5 (Opcional)"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Observaciones</label>
-                <textarea 
+                <textarea
                   value={editObservaciones}
                   onChange={(e) => setEditObservaciones(e.target.value)}
-                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm resize-none h-16" 
+                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm resize-none h-16"
                   placeholder="Notas o fallas (Ej. Se traba papel...)"
                 />
               </div>
@@ -1158,23 +2300,73 @@ export default function App() {
               {selectedPrinterHistory.length > 0 && (
                 <div className="pt-4 border-t border-outline-variant/30 space-y-2">
                   <h4 className="text-[11px] font-bold text-outline uppercase tracking-wider">Historial Reciente del Equipo</h4>
-                  <div className="max-h-32 overflow-y-auto space-y-2 pr-1">
+                  <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
                     {selectedPrinterHistory.map((hist, idx) => (
-                      <div key={idx} className="bg-surface-container-low p-2 rounded-xl text-[11px] border border-outline-variant/20 flex justify-between items-start">
-                        <div className="space-y-0.5">
-                          <p>
-                            <span className="font-semibold text-primary">T: {hist.toner_nivel}%</span> | <span className="font-semibold text-secondary">U: {hist.unidad_imagen_nivel}%</span>
+                      <div key={idx} className="bg-surface-container-low p-3 rounded-xl text-[11px] border border-outline-variant/20 space-y-1.5 shadow-sm">
+                        <div className="flex justify-between items-center">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {String(hist.tipo_actualizacion || "").toLowerCase().includes("ia") || String(hist.tipo_actualizacion || "").toLowerCase().includes("gemini") ? (
+                              <span className="flex items-center gap-0.5 text-[8px] bg-primary-fixed text-primary px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                <span className="material-symbols-outlined text-[10px]">smart_toy</span>
+                                IA
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-0.5 text-[8px] bg-outline-variant/30 text-on-surface-variant px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                <span className="material-symbols-outlined text-[10px]">person</span>
+                                Manual
+                              </span>
+                            )}
+                            <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider border ${hist.estado_criticidad === "Crítico"
+                              ? "bg-error-container text-error border-error/20"
+                              : hist.estado_criticidad === "Advertencia"
+                                ? "bg-tertiary-fixed text-tertiary border-tertiary/20"
+                                : "bg-green-100 text-green-800 border-green-200"
+                              }`}>
+                              {hist.estado_criticidad || "Estable"}
+                            </span>
+                            <span className="text-[10px] text-outline font-medium">
+                              {hist.tipo_actualizacion || "Manual"}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-outline font-mono font-medium">
+                            {hist.fecha_lectura?.toDate 
+                              ? `${hist.fecha_lectura.toDate().toLocaleDateString("es-PE")} ${hist.fecha_lectura.toDate().toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}` 
+                              : hist.fecha_lectura 
+                                ? `${new Date(hist.fecha_lectura).toLocaleDateString("es-PE")} ${new Date(hist.fecha_lectura).toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}`
+                                : ""
+                            }
+                          </span>
+                        </div>
+
+                        {/* Change details */}
+                        <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-outline-variant/20 text-xs">
+                          <div>
+                            <span className="text-[9px] font-bold text-outline block uppercase">Niveles Registrados</span>
+                            <span className="font-semibold text-on-surface">
+                              Tóner: <span className={hist.toner_nivel <= 15 ? "text-error" : "text-primary"}>{hist.toner_nivel}%</span> | 
+                              Unidad: <span className={hist.unidad_imagen_nivel <= 15 ? "text-error" : "text-secondary"}>{hist.unidad_imagen_nivel}%</span> | 
+                              Kit: <span className={(hist.mantenimiento_kit_nivel ?? 100) <= 15 ? "text-error" : "text-tertiary"}>{hist.mantenimiento_kit_nivel ?? 100}%</span>
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold text-outline block uppercase">Ubicación y Área</span>
+                            <span className="font-semibold text-on-surface">
+                              {hist.ubicacion_entidad || "Hospital"}{hist.area_actual ? ` - ${hist.area_actual}` : ""}
+                            </span>
+                          </div>
+                        </div>
+
+                        {hist.codigo_caso_cas && (
+                          <div className="text-[9px] font-bold text-primary bg-primary-fixed/40 px-1.5 py-0.5 rounded w-fit">
+                            CAS: {hist.codigo_caso_cas}
+                          </div>
+                        )}
+
+                        {hist.observaciones && (
+                          <p className="text-[10px] italic text-on-surface-variant bg-surface-container-high/50 px-2 py-1 rounded border border-dashed border-outline-variant/30 leading-snug">
+                            <strong>Obs:</strong> {hist.observaciones}
                           </p>
-                          {hist.observaciones && <p className="italic text-on-surface-variant truncate max-w-[200px]">"{hist.observaciones}"</p>}
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[9px] block text-outline font-mono">
-                            {hist.fecha_lectura?.toDate ? hist.fecha_lectura.toDate().toLocaleDateString("es-PE") : new Date(hist.fecha_lectura).toLocaleDateString("es-PE")}
-                          </span>
-                          <span className="text-[8px] bg-primary-fixed/40 px-1 py-0.2 rounded font-bold uppercase tracking-wider text-primary">
-                            {hist.tipo_actualizacion || "Manual"}
-                          </span>
-                        </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1183,18 +2375,31 @@ export default function App() {
             </div>
 
             {/* Actions */}
-            <div className="flex gap-3 pb-8 shrink-0">
-              <button 
-                type="button"
-                className="flex-1 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm" 
-                onClick={handleCloseEditModal}
-              >
-                Cancelar
-              </button>
-              <button 
+            <div className="flex flex-col gap-3 pb-8 shrink-0">
+              <div className="flex gap-3">
+                {!isCreateMode && (
+                  <button
+                    type="button"
+                    disabled={savingEdit}
+                    onClick={handleDeletePrinter}
+                    className="flex-1 py-3.5 bg-error-container text-on-error-container border border-error/20 font-bold rounded-2xl active:scale-95 transition-all hover:bg-error-container/80 text-sm flex items-center justify-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-sm">delete</span>
+                    <span>Eliminar</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="flex-1 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm"
+                  onClick={handleCloseEditModal}
+                >
+                  Cancelar
+                </button>
+              </div>
+              <button
                 type="submit"
                 disabled={savingEdit}
-                className="flex-[2] py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
+                className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
               >
                 {savingEdit ? (
                   <>
@@ -1210,6 +2415,127 @@ export default function App() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* EXCEL IMPORT PREVIEW MODAL */}
+      {isExcelImportModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => { if (!isExcelLoading) setIsExcelImportModalOpen(false); }}></div>
+
+          {/* Modal Container */}
+          <div className="absolute bottom-0 left-0 w-full bg-surface rounded-t-3xl p-6 shadow-2xl transition-transform max-w-lg mx-auto left-1/2 -translate-x-1/2 flex flex-col max-h-[90vh] overflow-hidden border border-outline-variant/30">
+            <div className="w-12 h-1 bg-outline-variant rounded-full mx-auto mb-6 shrink-0"></div>
+
+            <div className="flex justify-between items-center mb-4 shrink-0">
+              <div>
+                <h2 className="font-headline-lg text-lg text-primary font-bold flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-primary">upload_file</span>
+                  Importar Inventario Excel
+                </h2>
+                <p className="text-xs text-outline font-semibold truncate max-w-[280px]">Archivo: {excelFileName}</p>
+              </div>
+              {!isExcelLoading && (
+                <button
+                  type="button"
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-surface-container-high active:scale-90"
+                  onClick={() => setIsExcelImportModalOpen(false)}
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              )}
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto space-y-4 mb-6 pr-1 pb-4">
+              {isExcelLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+                  <span className="material-symbols-outlined text-primary text-5xl animate-spin">sync</span>
+                  <div className="space-y-1">
+                    <p className="font-bold text-sm text-on-surface">Analizando con Gemini AI...</p>
+                    <p className="text-xs text-outline">Leyendo celdas, normalizando áreas y clasificando criticidad en tiempo real.</p>
+                  </div>
+                </div>
+              ) : excelData ? (
+                <div className="space-y-4">
+                  {/* AI Report Card */}
+                  <div className="p-4 bg-primary-fixed-dim/20 border border-primary/20 rounded-2xl space-y-2">
+                    <h3 className="text-xs font-bold text-primary flex items-center gap-1">
+                      <span className="material-symbols-outlined text-sm animate-pulse-subtle">smart_toy</span>
+                      Análisis de la IA
+                    </h3>
+                    <div className="text-xs text-on-surface-variant whitespace-pre-line leading-relaxed italic bg-surface/50 p-3 rounded-xl border border-outline-variant/20 max-h-40 overflow-y-auto">
+                      {excelData.reporte_resumen}
+                    </div>
+                  </div>
+
+                  {/* Table Preview */}
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-bold text-outline uppercase tracking-wider">Vista Previa de Equipos ({excelData.equipos_normalizados?.length || 0})</h3>
+                    <div className="space-y-2 max-h-52 overflow-y-auto">
+                      {excelData.equipos_normalizados?.map((eq, idx) => (
+                        <div key={idx} className="p-3 bg-surface-container-low border border-outline-variant/30 rounded-xl flex justify-between items-center text-xs">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-on-surface">{eq.modelo}</span>
+                              <span className="text-[10px] text-outline font-mono">S/N: {eq.id_serie}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-on-surface-variant">
+                              <span className="material-symbols-outlined text-[10px]">
+                                {eq.ubicacion_entidad === "Hospital" ? "local_hospital" : "corporate_fare"}
+                              </span>
+                              <span>{eq.ubicacion_entidad} ({eq.area_actual})</span>
+                            </div>
+                          </div>
+                          <div className="text-right flex items-center gap-2">
+                            <div className="text-[10px] font-semibold text-outline text-right">
+                              <div>T: {eq.toner_nivel}%</div>
+                              <div>U: {eq.unidad_imagen_nivel}%</div>
+                              <div>K: {eq.mantenimiento_kit_nivel ?? 100}%</div>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase shrink-0 ${eq.estado_criticidad === "Crítico"
+                              ? "bg-error-container text-error border-error/20"
+                              : eq.estado_criticidad === "Advertencia"
+                                ? "bg-tertiary-fixed text-tertiary border-tertiary/20"
+                                : "bg-green-100 text-green-800 border-green-200"
+                              }`}>
+                              {eq.estado_criticidad}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-outline text-xs">
+                  Ocurrió un error al cargar los datos del archivo Excel.
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            {!isExcelLoading && excelData && (
+              <div className="flex gap-3 pb-4 shrink-0 border-t border-outline-variant/20 pt-4 bg-surface">
+                <button
+                  type="button"
+                  className="flex-1 py-3 border border-outline-variant text-on-surface-variant font-bold rounded-xl active:scale-95 transition-all text-xs"
+                  onClick={() => setIsExcelImportModalOpen(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmExcelImport}
+                  className="flex-[2] py-3 bg-primary text-on-primary font-bold rounded-xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-xs flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">cloud_upload</span>
+                  <span>Confirmar e Importar</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
