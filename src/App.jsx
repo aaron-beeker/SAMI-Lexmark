@@ -10,7 +10,8 @@ import {
   orderBy,
   query,
   setDoc,
-  deleteDoc
+  deleteDoc,
+  limit
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { seedPrintersIfEmpty, seedRepuestosIfEmpty } from "./services/SeedService";
@@ -45,6 +46,7 @@ export default function App() {
   const [editCasCode, setEditCasCode] = useState("");
   const [editUbicacion, setEditUbicacion] = useState("Hospital");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [savingStock, setSavingStock] = useState(false);
   const [isCreateMode, setIsCreateMode] = useState(false);
   const [editIdSerie, setEditIdSerie] = useState("");
   const [editModelo, setEditModelo] = useState("MX431ADN");
@@ -78,6 +80,17 @@ export default function App() {
   const [isExcelImportModalOpen, setIsExcelImportModalOpen] = useState(false);
   const excelFileInputRef = useRef(null);
 
+  // Stock Subtraction Modal State
+  const [stockModal, setStockModal] = useState({
+    isOpen: false,
+    modelo: "",
+    field: "",
+    insumo: "",
+    origin: "",
+    currentValue: 0
+  });
+  const [stockTargetPrinterId, setStockTargetPrinterId] = useState("");
+
   // Gemini API Key config
   const [apiKeyInput, setApiKeyInput] = useState(localStorage.getItem("sami_gemini_api_key") || "");
   const [showSettingsSaved, setShowSettingsSaved] = useState(false);
@@ -89,6 +102,10 @@ export default function App() {
 
   // Seeding and Firestore Sync
   useEffect(() => {
+    let unsubscribePrinters = null;
+    let unsubscribeRepuestos = null;
+    let unsubscribeHistory = null;
+
     const initApp = async () => {
       try {
         await seedPrintersIfEmpty(db);
@@ -99,7 +116,7 @@ export default function App() {
 
       // Setup Realtime Sync for Printers
       const printersColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras");
-      const unsubscribePrinters = onSnapshot(printersColRef, (snapshot) => {
+      unsubscribePrinters = onSnapshot(printersColRef, (snapshot) => {
         const printerList = [];
         snapshot.forEach((doc) => {
           printerList.push({
@@ -109,26 +126,6 @@ export default function App() {
         });
         setPrinters(printerList);
         setLoadingPrinters(false);
-
-        // Assemble a general history log from the latest readings
-        const logs = printerList
-          .filter(p => p.consumibles?.ultima_lectura)
-          .map(p => {
-            const timestamp = p.consumibles.ultima_lectura?.toDate ? p.consumibles.ultima_lectura.toDate() : new Date(p.consumibles.ultima_lectura);
-            return {
-              id_serie: p.id_serie,
-              modelo: p.modelo,
-              area_actual: p.area_actual,
-              toner_nivel: p.consumibles.toner_nivel,
-              unidad_imagen_nivel: p.consumibles.unidad_imagen_nivel,
-              mantenimiento_kit_nivel: p.consumibles.mantenimiento_kit_nivel,
-              estado_criticidad: p.estado_criticidad,
-              observaciones: p.observaciones,
-              timestamp
-            };
-          })
-          .sort((a, b) => b.timestamp - a.timestamp);
-        setGeneralHistory(logs);
       }, (error) => {
         console.error("Firestore onSnapshot error:", error);
         setLoadingPrinters(false);
@@ -136,7 +133,7 @@ export default function App() {
 
       // Setup Realtime Sync for Repuestos
       const repuestosColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "repuestos");
-      const unsubscribeRepuestos = onSnapshot(repuestosColRef, (snapshot) => {
+      unsubscribeRepuestos = onSnapshot(repuestosColRef, (snapshot) => {
         const repuestosList = [];
         snapshot.forEach((doc) => {
           repuestosList.push({
@@ -149,13 +146,33 @@ export default function App() {
         console.error("Firestore repuestos onSnapshot error:", error);
       });
 
-      return () => {
-        unsubscribePrinters();
-        unsubscribeRepuestos();
-      };
+      // Setup Realtime Sync for General History Audit Logs
+      const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+      const qHistory = query(generalHistoryColRef, orderBy("timestamp", "desc"), limit(50));
+      unsubscribeHistory = onSnapshot(qHistory, (snapshot) => {
+        const historyList = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const timestamp = data.timestamp?.toDate ? data.timestamp.toDate() : (data.timestamp ? new Date(data.timestamp) : new Date());
+          historyList.push({
+            id: doc.id,
+            ...data,
+            timestamp
+          });
+        });
+        setGeneralHistory(historyList);
+      }, (error) => {
+        console.error("Firestore general history onSnapshot error:", error);
+      });
     };
 
     initApp();
+
+    return () => {
+      if (unsubscribePrinters) unsubscribePrinters();
+      if (unsubscribeRepuestos) unsubscribeRepuestos();
+      if (unsubscribeHistory) unsubscribeHistory();
+    };
   }, []);
 
   // Fetch history for selected printer when modal opens
@@ -365,6 +382,23 @@ export default function App() {
         });
       }
 
+      // Save to General History
+      const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+      await addDoc(generalHistoryColRef, {
+        tipo: "impresora",
+        id_serie: cleanId,
+        modelo: editModelo,
+        area_actual: editArea,
+        toner_nivel: Number(editToner),
+        unidad_imagen_nivel: Number(editUnit),
+        mantenimiento_kit_nivel: Number(editMantenimiento),
+        estado_criticidad: computedCrit,
+        observaciones: editObservaciones || "",
+        codigo_caso_cas: editCasCode,
+        tipo_actualizacion: isCreateMode ? "Manual (Creado)" : "Manual",
+        timestamp: new Date()
+      });
+
       handleCloseEditModal();
     } catch (error) {
       console.error("Error saving printer updates:", error);
@@ -512,12 +546,180 @@ export default function App() {
   const updateManualStock = async (modelo, field, newValue) => {
     if (newValue < 0) return;
     try {
+      const matchedStock = repuestos.find(r => r.id === modelo);
+      const prevValue = matchedStock ? (matchedStock[field] ?? 0) : 0;
+
       const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "repuestos", modelo);
       await updateDoc(docRef, {
         [field]: Number(newValue)
       });
+
+      let insumo = "Tóner";
+      if (field.startsWith("unidad")) {
+        insumo = "Unidad de Imagen";
+      } else if (field.startsWith("mantenimiento")) {
+        insumo = "Kit de Mantenimiento";
+      }
+
+      let origin = "Hospital";
+      if (field.endsWith("deposito")) {
+        origin = "Depósito";
+      }
+
+      const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+      await addDoc(generalHistoryColRef, {
+        tipo: "stock",
+        modelo,
+        insumo,
+        origen: origin,
+        cantidad_anterior: Number(prevValue),
+        cantidad_nueva: Number(newValue),
+        tipo_actualizacion: "Ajuste Manual (+)",
+        observaciones: `Se incrementó el stock de ${insumo} (${origin}) para modelo ${modelo}.`,
+        timestamp: new Date()
+      });
     } catch (e) {
       console.error("Error updating manual stock:", e);
+    }
+  };
+
+  // Handle click on stock decrement (-) button to trigger printer selection flow
+  const handleDecrementStockClick = (modelo, field, currentValue) => {
+    if (currentValue <= 0) return;
+
+    let insumo = "Tóner";
+    if (field.startsWith("unidad")) {
+      insumo = "Unidad de Imagen";
+    } else if (field.startsWith("mantenimiento")) {
+      insumo = "Kit de Mantenimiento";
+    }
+
+    let origin = "Hospital";
+    if (field.endsWith("deposito")) {
+      origin = "Depósito";
+    }
+
+    setStockModal({
+      isOpen: true,
+      modelo,
+      field,
+      insumo,
+      origin,
+      currentValue
+    });
+    setStockTargetPrinterId(""); // reset selected printer
+  };
+
+  // Confirm stock reduction and optionally update target printer consumable capacity to 100%
+  const handleConfirmStockReduction = async () => {
+    if (savingStock) return;
+    const { modelo, field, currentValue, insumo, origin } = stockModal;
+    const newValue = currentValue - 1;
+
+    setSavingStock(true);
+    try {
+      // 1. Decrement Stock count in Firestore
+      const stockDocRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "repuestos", modelo);
+      await updateDoc(stockDocRef, {
+        [field]: newValue
+      });
+
+      // 2. If a printer was selected, update its consumable to 100% and save to history
+      if (stockTargetPrinterId && stockTargetPrinterId !== "none") {
+        const printer = printers.find(p => p.id_serie === stockTargetPrinterId);
+        if (printer) {
+          const printerDocRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", printer.id_serie);
+
+          let tonerVal = printer.consumibles?.toner_nivel ?? 100;
+          let unitVal = printer.consumibles?.unidad_imagen_nivel ?? 100;
+          let maintVal = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
+
+          if (field.startsWith("toner")) {
+            tonerVal = 100;
+          } else if (field.startsWith("unidad")) {
+            unitVal = 100;
+          } else if (field.startsWith("mantenimiento")) {
+            maintVal = 100;
+          }
+
+          const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+          const computedCrit = calculateCriticidad(tonerVal, unitVal, maintVal);
+
+          const updateData = {
+            "consumibles.toner_nivel": tonerVal,
+            "consumibles.unidad_imagen_nivel": unitVal,
+            "consumibles.mantenimiento_kit_nivel": maintVal,
+            "consumibles.ultima_lectura": new Date(),
+            estado_criticidad: computedCrit,
+            prediccion: prediction
+          };
+
+          await updateDoc(printerDocRef, updateData);
+
+          const historyColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", printer.id_serie, "historial_lecturas");
+          await addDoc(historyColRef, {
+            toner_nivel: tonerVal,
+            unidad_imagen_nivel: unitVal,
+            mantenimiento_kit_nivel: maintVal,
+            estado_criticidad: computedCrit,
+            observaciones: `Reemplazo e instalación de ${insumo} nuevo desde stock ${origin}.`,
+            codigo_caso_cas: printer.codigo_caso_cas || "",
+            ubicacion_entidad: printer.ubicacion_entidad || "Hospital",
+            area_actual: printer.area_actual || "Soporte",
+            fecha_lectura: new Date(),
+            tipo_actualizacion: "Reemplazo de Repuesto"
+          });
+
+          // Save to General History (Printer Update)
+          const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+          await addDoc(generalHistoryColRef, {
+            tipo: "impresora",
+            id_serie: printer.id_serie,
+            modelo: printer.modelo,
+            area_actual: printer.area_actual || "Soporte",
+            toner_nivel: tonerVal,
+            unidad_imagen_nivel: unitVal,
+            mantenimiento_kit_nivel: maintVal,
+            estado_criticidad: computedCrit,
+            observaciones: `Reemplazo e instalación de ${insumo} nuevo desde stock ${origin}.`,
+            codigo_caso_cas: printer.codigo_caso_cas || "",
+            tipo_actualizacion: "Reemplazo de Repuesto",
+            timestamp: new Date()
+          });
+        }
+      }
+
+      // Save to General History (Stock reduction event)
+      const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+      await addDoc(generalHistoryColRef, {
+        tipo: "stock",
+        modelo,
+        insumo,
+        origen: origin,
+        cantidad_anterior: Number(currentValue),
+        cantidad_nueva: Number(newValue),
+        tipo_actualizacion: "Consumo de Repuesto",
+        observaciones: stockTargetPrinterId && stockTargetPrinterId !== "none"
+          ? `Se descontó 1 unidad de ${insumo} (${origin}) para instalar en impresora S/N: ${stockTargetPrinterId}.`
+          : `Se descontó 1 unidad de ${insumo} (${origin}) sin impresora asociada.`,
+        timestamp: new Date()
+      });
+
+      alert("Inventario de repuestos y estado del equipo actualizados correctamente.");
+    } catch (e) {
+      console.error("Error processing stock reduction:", e);
+      alert("Error al procesar el descuento de stock: " + e.message);
+    } finally {
+      setStockModal({
+        isOpen: false,
+        modelo: "",
+        field: "",
+        insumo: "",
+        origin: "",
+        currentValue: 0
+      });
+      setStockTargetPrinterId("");
+      setSavingStock(false);
     }
   };
 
@@ -690,7 +892,7 @@ export default function App() {
   };
 
   const handleConfirmExcelImport = async () => {
-    if (!excelData || !excelData.equipos_normalizados) return;
+    if (!excelData || !excelData.equipos_normalizados || isExcelLoading) return;
 
     setIsExcelLoading(true);
     try {
@@ -770,6 +972,22 @@ export default function App() {
           tipo_actualizacion: "Importación Excel (IA)"
         });
 
+        const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+        await addDoc(generalHistoryColRef, {
+          tipo: "impresora",
+          id_serie: snUpper,
+          modelo: printerDoc.modelo,
+          area_actual: areaVal,
+          toner_nivel: tonerVal,
+          unidad_imagen_nivel: unitVal,
+          mantenimiento_kit_nivel: maintVal,
+          estado_criticidad: printerDoc.estado_criticidad,
+          observaciones: printerDoc.observaciones || "",
+          codigo_caso_cas: printerDoc.codigo_caso_cas || "",
+          tipo_actualizacion: "Importación Excel (IA)",
+          timestamp: new Date()
+        });
+
         auditLogLines.push(`- **${printerDoc.modelo}** (S/N: ${snUpper}): ${printerDoc.ubicacion_entidad} (${printerDoc.area_actual})`);
       }
 
@@ -821,7 +1039,7 @@ export default function App() {
   // Submit Chat Message to Gemini
   const handleSendChatMessage = async (e) => {
     e.preventDefault();
-    if (!chatInput.trim() && !chatImage) return;
+    if ((!chatInput.trim() && !chatImage) || isChatLoading) return;
 
     const userMsgText = chatInput;
     const attachedImage = chatImage;
@@ -953,9 +1171,41 @@ export default function App() {
 
           await updateDoc(docRef, updateObj);
 
-          const labelInsumo = insumo === "toner" ? "Tóner" : insumo === "mantenimiento" ? "Kit Mantenimiento" : "Unidad Imagen";
+          const labelInsumo = insumo === "toner" ? "Tóner" : insumo === "mantenimiento" ? "Kit de Mantenimiento" : "Unidad de Imagen";
           const hVal = logHospital !== null ? logHospital : (insumo === "toner" ? (matchedStock.toner_hospital ?? 0) : insumo === "mantenimiento" ? (matchedStock.mantenimiento_hospital ?? 0) : (matchedStock.unidad_hospital ?? 0));
           const dVal = logDeposito !== null ? logDeposito : (insumo === "toner" ? (matchedStock.toner_deposito ?? 0) : insumo === "mantenimiento" ? (matchedStock.mantenimiento_deposito ?? 0) : (matchedStock.unidad_deposito ?? 0));
+
+          const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+
+          if (logHospital !== null) {
+            const prevVal = insumo === "toner" ? (matchedStock.toner_hospital ?? 0) : insumo === "mantenimiento" ? (matchedStock.mantenimiento_hospital ?? 0) : (matchedStock.unidad_hospital ?? 0);
+            await addDoc(generalHistoryColRef, {
+              tipo: "stock",
+              modelo: modeloNorm,
+              insumo: labelInsumo,
+              origen: "Hospital",
+              cantidad_anterior: Number(prevVal),
+              cantidad_nueva: Number(logHospital),
+              tipo_actualizacion: "Actualización IA",
+              observaciones: result.observaciones || `Se actualizó el stock de ${labelInsumo} (Hospital) vía chat de IA.`,
+              timestamp: new Date()
+            });
+          }
+
+          if (logDeposito !== null) {
+            const prevVal = insumo === "toner" ? (matchedStock.toner_deposito ?? 0) : insumo === "mantenimiento" ? (matchedStock.mantenimiento_deposito ?? 0) : (matchedStock.unidad_deposito ?? 0);
+            await addDoc(generalHistoryColRef, {
+              tipo: "stock",
+              modelo: modeloNorm,
+              insumo: labelInsumo,
+              origen: "Depósito",
+              cantidad_anterior: Number(prevVal),
+              cantidad_nueva: Number(logDeposito),
+              tipo_actualizacion: "Actualización IA",
+              observaciones: result.observaciones || `Se actualizó el stock de ${labelInsumo} (Depósito) vía chat de IA.`,
+              timestamp: new Date()
+            });
+          }
 
           auditLogs.push(`- **${modeloNorm}** (${labelInsumo}): Hospital = ${hVal}, Depósito = ${dVal}`);
         }
@@ -1027,6 +1277,22 @@ export default function App() {
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", matchedPrinter.id_serie);
         await deleteDoc(docRef);
 
+        const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+        await addDoc(generalHistoryColRef, {
+          tipo: "impresora",
+          id_serie: matchedPrinter.id_serie,
+          modelo: matchedPrinter.modelo,
+          area_actual: matchedPrinter.area_actual || "Soporte",
+          toner_nivel: 0,
+          unidad_imagen_nivel: 0,
+          mantenimiento_kit_nivel: 0,
+          estado_criticidad: "Eliminado",
+          observaciones: `Impresora eliminada vía chat de IA.`,
+          codigo_caso_cas: matchedPrinter.codigo_caso_cas || "",
+          tipo_actualizacion: "Eliminado (IA)",
+          timestamp: new Date()
+        });
+
         setChatMessages(prev => [
           ...prev,
           {
@@ -1083,6 +1349,23 @@ export default function App() {
           area_actual: newPrinter.area_actual,
           fecha_lectura: new Date(),
           tipo_actualizacion: "Gemini AI (Creado)"
+        });
+
+        // Save to General History
+        const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+        await addDoc(generalHistoryColRef, {
+          tipo: "impresora",
+          id_serie: idSerieUpper,
+          modelo: newPrinter.modelo,
+          area_actual: newPrinter.area_actual,
+          toner_nivel: tonerVal,
+          unidad_imagen_nivel: unitVal,
+          mantenimiento_kit_nivel: maintVal,
+          estado_criticidad: newPrinter.estado_criticidad,
+          observaciones: newPrinter.observaciones,
+          codigo_caso_cas: newPrinter.codigo_caso_cas,
+          tipo_actualizacion: "Gemini AI (Creado)",
+          timestamp: new Date()
         });
 
         setChatMessages(prev => [
@@ -1147,6 +1430,23 @@ export default function App() {
           tipo_actualizacion: "Gemini AI (Auto-creado)"
         });
 
+        // Save to General History
+        const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+        await addDoc(generalHistoryColRef, {
+          tipo: "impresora",
+          id_serie: idSerieUpper,
+          modelo: newPrinter.modelo,
+          area_actual: newPrinter.area_actual,
+          toner_nivel: tonerVal,
+          unidad_imagen_nivel: unitVal,
+          mantenimiento_kit_nivel: maintVal,
+          estado_criticidad: newPrinter.estado_criticidad,
+          observaciones: newPrinter.observaciones,
+          codigo_caso_cas: newPrinter.codigo_caso_cas,
+          tipo_actualizacion: "Gemini AI (Auto-creado)",
+          timestamp: new Date()
+        });
+
         setChatMessages(prev => [
           ...prev,
           {
@@ -1202,6 +1502,23 @@ export default function App() {
           area_actual: updateData.area_actual,
           fecha_lectura: new Date(),
           tipo_actualizacion: "Gemini AI"
+        });
+
+        // Save to General History
+        const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+        await addDoc(generalHistoryColRef, {
+          tipo: "impresora",
+          id_serie: matchedPrinter.id_serie,
+          modelo: updateData.modelo,
+          area_actual: updateData.area_actual,
+          toner_nivel: tonerVal,
+          unidad_imagen_nivel: unitVal,
+          mantenimiento_kit_nivel: maintVal,
+          estado_criticidad: updateData.estado_criticidad,
+          observaciones: updateData.observaciones || "",
+          codigo_caso_cas: updateData.codigo_caso_cas || "",
+          tipo_actualizacion: "Gemini AI",
+          timestamp: new Date()
         });
 
         setChatMessages(prev => [
@@ -1543,7 +1860,7 @@ export default function App() {
                             <div className="flex items-center gap-0.5">
                               <button
                                 type="button"
-                                onClick={() => updateManualStock(item.id, "toner_hospital", (item.toner_hospital || 0) - 1)}
+                                onClick={() => handleDecrementStockClick(item.id, "toner_hospital", item.toner_hospital || 0)}
                                 className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
                               >-</button>
                               <span className="font-bold min-w-[12px] text-center">{item.toner_hospital ?? 0}</span>
@@ -1559,7 +1876,7 @@ export default function App() {
                             <div className="flex items-center gap-0.5">
                               <button
                                 type="button"
-                                onClick={() => updateManualStock(item.id, "toner_deposito", (item.toner_deposito || 0) - 1)}
+                                onClick={() => handleDecrementStockClick(item.id, "toner_deposito", item.toner_deposito || 0)}
                                 className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
                               >-</button>
                               <span className="font-bold min-w-[12px] text-center text-primary">{item.toner_deposito ?? 0}</span>
@@ -1580,7 +1897,7 @@ export default function App() {
                             <div className="flex items-center gap-0.5">
                               <button
                                 type="button"
-                                onClick={() => updateManualStock(item.id, "unidad_hospital", (item.unidad_hospital || 0) - 1)}
+                                onClick={() => handleDecrementStockClick(item.id, "unidad_hospital", item.unidad_hospital || 0)}
                                 className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
                               >-</button>
                               <span className="font-bold min-w-[12px] text-center">{item.unidad_hospital ?? 0}</span>
@@ -1596,7 +1913,7 @@ export default function App() {
                             <div className="flex items-center gap-0.5">
                               <button
                                 type="button"
-                                onClick={() => updateManualStock(item.id, "unidad_deposito", (item.unidad_deposito || 0) - 1)}
+                                onClick={() => handleDecrementStockClick(item.id, "unidad_deposito", item.unidad_deposito || 0)}
                                 className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
                               >-</button>
                               <span className="font-bold min-w-[12px] text-center text-secondary">{item.unidad_deposito ?? 0}</span>
@@ -1617,7 +1934,7 @@ export default function App() {
                             <div className="flex items-center gap-0.5">
                               <button
                                 type="button"
-                                onClick={() => updateManualStock(item.id, "mantenimiento_hospital", (item.mantenimiento_hospital || 0) - 1)}
+                                onClick={() => handleDecrementStockClick(item.id, "mantenimiento_hospital", item.mantenimiento_hospital || 0)}
                                 className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
                               >-</button>
                               <span className="font-bold min-w-[12px] text-center">{item.mantenimiento_hospital ?? 0}</span>
@@ -1633,7 +1950,7 @@ export default function App() {
                             <div className="flex items-center gap-0.5">
                               <button
                                 type="button"
-                                onClick={() => updateManualStock(item.id, "mantenimiento_deposito", (item.mantenimiento_deposito || 0) - 1)}
+                                onClick={() => handleDecrementStockClick(item.id, "mantenimiento_deposito", item.mantenimiento_deposito || 0)}
                                 className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
                               >-</button>
                               <span className="font-bold min-w-[12px] text-center text-tertiary">{item.mantenimiento_deposito ?? 0}</span>
@@ -2087,57 +2404,111 @@ export default function App() {
                   <p className="font-semibold">No hay lecturas registradas</p>
                 </div>
               ) : (
-                generalHistory.map((log, idx) => (
-                  <div
-                    key={idx}
-                    className="p-4 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-2"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-sm text-on-background">{log.modelo}</h4>
-                        <p className="text-[10px] text-outline font-mono">S/N: {log.id_serie}</p>
-                      </div>
-                      <span className="text-[10px] text-outline font-medium">
-                        {log.timestamp.toLocaleDateString("es-PE")} {log.timestamp.toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
+                generalHistory.map((log) => {
+                  if (log.tipo === "stock") {
+                    return (
+                      <div
+                        key={log.id}
+                        className="p-4 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-2 animate-fade-in"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary text-xl bg-primary-fixed/20 p-1.5 rounded-lg">
+                              inventory_2
+                            </span>
+                            <div>
+                              <h4 className="font-bold text-sm text-on-background">Ajuste de Stock: {log.modelo}</h4>
+                              <p className="text-[10px] text-outline font-medium uppercase tracking-wider">{log.tipo_actualizacion}</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-outline font-medium">
+                            {log.timestamp.toLocaleDateString("es-PE")} {log.timestamp.toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
 
-                    <div className="grid grid-cols-4 gap-2 pt-2 border-t border-outline-variant/30 text-xs">
-                      <div>
-                        <span className="text-[9px] font-bold text-outline block uppercase">Tóner</span>
-                        <span className={`font-semibold ${log.toner_nivel <= 15 ? 'text-error' : 'text-on-surface'}`}>
-                          {log.toner_nivel}%
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-bold text-outline block uppercase">U. Imagen</span>
-                        <span className={`font-semibold ${log.unidad_imagen_nivel <= 15 ? 'text-error' : 'text-on-surface'}`}>
-                          {log.unidad_imagen_nivel}%
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-bold text-outline block uppercase">Kit Mant.</span>
-                        <span className={`font-semibold ${(log.mantenimiento_kit_nivel ?? 100) <= 15 ? 'text-error' : 'text-on-surface'}`}>
-                          {log.mantenimiento_kit_nivel ?? 100}%
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-bold text-outline block uppercase">Criticidad</span>
-                        <span className={`font-semibold ${log.estado_criticidad === "Crítico" ? "text-error" : log.estado_criticidad === "Advertencia" ? "text-tertiary" : "text-green-600"
-                          }`}>
-                          {log.estado_criticidad}
-                        </span>
-                      </div>
-                    </div>
+                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30 text-xs">
+                          <div>
+                            <span className="text-[9px] font-bold text-outline block uppercase">Repuesto</span>
+                            <span className="font-semibold text-on-surface text-[11px]">{log.insumo}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold text-outline block uppercase">Origen/Destino</span>
+                            <span className="font-semibold text-on-surface text-[11px]">{log.origen}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold text-outline block uppercase">Cantidad</span>
+                            <span className="font-semibold text-on-surface text-[11px]">
+                              {log.cantidad_anterior} → {log.cantidad_nueva}
+                            </span>
+                          </div>
+                        </div>
 
-                    {log.observaciones && (
-                      <p className="text-xs text-on-surface-variant bg-surface-container-low px-2 py-1 rounded border border-outline-variant/30 max-h-12 overflow-hidden text-ellipsis">
-                        <strong className="text-[10px] uppercase font-bold text-outline mr-1">Obs:</strong>
-                        {log.observaciones}
-                      </p>
-                    )}
-                  </div>
-                ))
+                        {log.observaciones && (
+                          <p className="text-xs text-on-surface-variant bg-surface-container-low px-2 py-1 rounded border border-outline-variant/30 max-h-12 overflow-hidden text-ellipsis">
+                            <strong className="text-[10px] uppercase font-bold text-outline mr-1">Obs:</strong>
+                            {log.observaciones}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={log.id}
+                      className="p-4 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-2 animate-fade-in"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-secondary text-xl bg-secondary-fixed/20 p-1.5 rounded-lg">
+                            print
+                          </span>
+                          <div>
+                            <h4 className="font-bold text-sm text-on-background">{log.modelo}</h4>
+                            <p className="text-[10px] text-outline font-mono">S/N: {log.id_serie} • {log.tipo_actualizacion || "Lectura"}</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-outline font-medium">
+                          {log.timestamp.toLocaleDateString("es-PE")} {log.timestamp.toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 pt-2 border-t border-outline-variant/30 text-xs">
+                        <div>
+                          <span className="text-[9px] font-bold text-outline block uppercase">Tóner</span>
+                          <span className={`font-semibold ${log.toner_nivel <= 15 ? 'text-error' : 'text-on-surface'}`}>
+                            {log.toner_nivel}%
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-bold text-outline block uppercase">U. Imagen</span>
+                          <span className={`font-semibold ${log.unidad_imagen_nivel <= 15 ? 'text-error' : 'text-on-surface'}`}>
+                            {log.unidad_imagen_nivel}%
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-bold text-outline block uppercase">Kit Mant.</span>
+                          <span className={`font-semibold ${(log.mantenimiento_kit_nivel ?? 100) <= 15 ? 'text-error' : 'text-on-surface'}`}>
+                            {log.mantenimiento_kit_nivel ?? 100}%
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-bold text-outline block uppercase">Criticidad</span>
+                          <span className={`font-semibold ${log.estado_criticidad === "Crítico" ? "text-error" : log.estado_criticidad === "Advertencia" ? "text-tertiary" : "text-green-600"}`}>
+                            {log.estado_criticidad}
+                          </span>
+                        </div>
+                      </div>
+
+                      {log.observaciones && (
+                        <p className="text-xs text-on-surface-variant bg-surface-container-low px-2 py-1 rounded border border-outline-variant/30 max-h-12 overflow-hidden text-ellipsis">
+                          <strong className="text-[10px] uppercase font-bold text-outline mr-1">Obs:</strong>
+                          {log.observaciones}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -2415,8 +2786,8 @@ export default function App() {
                 <div className="pt-4 border-t border-outline-variant/30 space-y-2">
                   <h4 className="text-[11px] font-bold text-outline uppercase tracking-wider">Historial Reciente del Equipo</h4>
                   <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
-                    {selectedPrinterHistory.map((hist, idx) => (
-                      <div key={idx} className="bg-surface-container-low p-3 rounded-xl text-[11px] border border-outline-variant/20 space-y-1.5 shadow-sm">
+                    {selectedPrinterHistory.map((hist) => (
+                      <div key={hist.id} className="bg-surface-container-low p-3 rounded-xl text-[11px] border border-outline-variant/20 space-y-1.5 shadow-sm">
                         <div className="flex justify-between items-center">
                           <div className="flex flex-wrap items-center gap-1.5">
                             {String(hist.tipo_actualizacion || "").toLowerCase().includes("ia") || String(hist.tipo_actualizacion || "").toLowerCase().includes("gemini") ? (
@@ -2598,8 +2969,8 @@ export default function App() {
                   <div className="space-y-2">
                     <h3 className="text-xs font-bold text-outline uppercase tracking-wider">Vista Previa de Equipos ({excelData.equipos_normalizados?.length || 0})</h3>
                     <div className="space-y-2 max-h-52 overflow-y-auto">
-                      {excelData.equipos_normalizados?.map((eq, idx) => (
-                        <div key={idx} className="p-3 bg-surface-container-low border border-outline-variant/30 rounded-xl flex justify-between items-center text-xs">
+                      {excelData.equipos_normalizados?.map((eq) => (
+                        <div key={eq.id_serie} className="p-3 bg-surface-container-low border border-outline-variant/30 rounded-xl flex justify-between items-center text-xs">
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-on-surface">{eq.modelo}</span>
@@ -2659,6 +3030,109 @@ export default function App() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* STOCK SUBTRACTION CONFIRMATION MODAL */}
+      {stockModal.isOpen && (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setStockModal(prev => ({ ...prev, isOpen: false }))}></div>
+
+          {/* Modal Container */}
+          <div className="absolute bottom-0 left-0 w-full bg-surface rounded-t-3xl p-6 shadow-2xl transition-transform max-w-lg mx-auto left-1/2 -translate-x-1/2 flex flex-col max-h-[85vh] overflow-hidden border border-outline-variant/30 animate-fade-in">
+            <div className="w-12 h-1 bg-outline-variant rounded-full mx-auto mb-6 shrink-0"></div>
+
+            <div className="flex justify-between items-center mb-4 shrink-0">
+              <div>
+                <h2 className="font-headline-lg text-lg text-primary font-bold flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-primary">inventory_2</span>
+                  Descontar Repuesto de Stock
+                </h2>
+                <p className="text-xs text-outline font-semibold">
+                  Modelo: {stockModal.modelo} | Tipo: {stockModal.insumo} ({stockModal.origin})
+                </p>
+              </div>
+              <button
+                type="button"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-surface-container-high active:scale-90"
+                onClick={() => setStockModal(prev => ({ ...prev, isOpen: false }))}
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="space-y-4 mb-6 flex-grow overflow-y-auto pr-1">
+              <div className="p-4 bg-primary-fixed-dim/20 border border-primary/20 rounded-2xl text-xs text-on-surface-variant leading-relaxed">
+                Vas a reducir el stock de <strong>{stockModal.insumo}</strong> en 1 unidad (quedarán <strong>{stockModal.currentValue - 1}</strong>).
+                <br /><br />
+                Si este repuesto se va a instalar en una impresora del inventario, selecciónala a continuación para <strong>restaurar su nivel al 100%</strong> y registrar el cambio en su historial de forma automática.
+              </div>
+
+              {/* Printer Selection Dropdown */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-outline uppercase tracking-wider block">
+                  Asociar a Impresora ({stockModal.modelo})
+                </label>
+                <select
+                  value={stockTargetPrinterId}
+                  onChange={(e) => setStockTargetPrinterId(e.target.value)}
+                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
+                >
+                  <option value="">-- Seleccionar impresora (opcional) --</option>
+                  <option value="none">Ninguna (Solo descontar del stock)</option>
+                  {printers
+                    .filter(p => (p.modelo || "").toUpperCase() === stockModal.modelo.toUpperCase())
+                    .map(p => {
+                      let levelText = "";
+                      if (stockModal.field.startsWith("toner")) {
+                        levelText = `Tóner: ${p.consumibles?.toner_nivel ?? 100}%`;
+                      } else if (stockModal.field.startsWith("unidad")) {
+                        levelText = `U. Imagen: ${p.consumibles?.unidad_imagen_nivel ?? 100}%`;
+                      } else if (stockModal.field.startsWith("mantenimiento")) {
+                        levelText = `Kit: ${p.consumibles?.mantenimiento_kit_nivel ?? 100}%`;
+                      }
+
+                      return (
+                        <option key={p.id_serie} value={p.id_serie}>
+                          S/N: {p.id_serie} - {p.area_actual || "Soporte"} ({levelText})
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pb-4 shrink-0 border-t border-outline-variant/20 pt-4 bg-surface">
+              <button
+                type="button"
+                className="flex-1 py-3 border border-outline-variant text-on-surface-variant font-bold rounded-xl active:scale-95 transition-all text-xs"
+                onClick={() => setStockModal(prev => ({ ...prev, isOpen: false }))}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={savingStock}
+                onClick={handleConfirmStockReduction}
+                className="flex-[2] py-3 bg-primary text-on-primary font-bold rounded-xl shadow-lg active:scale-95 hover:bg-primary-container disabled:opacity-50 transition-all text-xs flex items-center justify-center gap-1"
+              >
+                {savingStock ? (
+                  <>
+                    <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                    <span>Procesando...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-sm">remove_circle</span>
+                    <span>Confirmar Descuento</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
