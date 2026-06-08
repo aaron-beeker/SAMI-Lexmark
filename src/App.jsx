@@ -301,7 +301,7 @@ export default function App() {
           area_actual: editArea,
           codigo_caso_cas: editCasCode,
           estado_criticidad: computedCrit,
-          observaciones: editObservaciones || "Registrado manualmente",
+          observaciones: editObservaciones || "",
           ubicacion_entidad: editUbicacion,
           consumibles: {
             toner_nivel: Number(editToner),
@@ -403,6 +403,108 @@ export default function App() {
       alert("Error al eliminar la impresora: " + error.message);
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  // Delete a specific history log entry
+  const handleDeleteHistoryItem = async (historyId) => {
+    if (!selectedPrinter) return;
+
+    const confirmDelete = window.confirm(
+      "¿Estás seguro de que deseas eliminar este registro del historial de lecturas?"
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const docRef = doc(
+        db,
+        "artifacts",
+        "sami-lexmark",
+        "public",
+        "data",
+        "impresoras",
+        selectedPrinter.id_serie,
+        "historial_lecturas",
+        historyId
+      );
+      await deleteDoc(docRef);
+
+      // Remove from local state
+      setSelectedPrinterHistory(prev => prev.filter(h => h.id !== historyId));
+      alert("Registro de historial eliminado exitosamente.");
+    } catch (error) {
+      console.error("Error deleting history entry:", error);
+      alert("Error al eliminar el registro de historial: " + error.message);
+    }
+  };
+
+  // Generate and download Excel report matching the project's original structure
+  const handleDownloadReport = () => {
+    try {
+      // 1. Format today's date as DD/MM/YY
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yy = String(today.getFullYear()).slice(-2);
+      const dateStr = `${dd}/${mm}/${yy}`;
+
+      const areaHeader = `AREA ACTUAL ${dateStr}`;
+
+      // Helper to check if a printer is inoperative
+      const isInoperative = (p) => {
+        const obs = (p.observaciones || "").toLowerCase();
+        const area = (p.area_actual || "").toLowerCase();
+        return area.includes("soporte") || obs.includes("inoperativa") || obs.includes("inoperativo") || obs.includes("malograda") || obs.includes("malogrado");
+      };
+
+      // 2. Sort printers: operative first by area, then inoperative by area
+      const sortedPrinters = [...printers].sort((a, b) => {
+        const aInop = isInoperative(a);
+        const bInop = isInoperative(b);
+
+        if (aInop && !bInop) return 1;
+        if (!aInop && bInop) return -1;
+
+        const areaA = (a.area_actual || "").trim();
+        const areaB = (b.area_actual || "").trim();
+        return areaA.localeCompare(areaB, 'es', { sensitivity: 'base' });
+      });
+
+      // 3. Map printers to row structures (exactly matching the 6 original columns of TI HNCH)
+      const reportRows = sortedPrinters.map((p, idx) => ({
+        "N°": idx + 1,
+        "IMPRESORA/MODELO": p.modelo || "MX431ADN",
+        [areaHeader]: p.area_actual || "Soporte",
+        "SERIE": p.id_serie,
+        "OBS": p.observaciones || "",
+        "CASO": p.codigo_caso_cas || ""
+      }));
+
+      // 4. Create Workbook with a single sheet
+      const wb = XLSX.utils.book_new();
+
+      // Convert rows to sheet (TI HNCH format starts directly with headers at A1)
+      const ws = XLSX.utils.json_to_sheet(reportRows);
+
+      // Define default column widths for clean visual styling
+      const colWidths = [
+        { wch: 6 },   // N°
+        { wch: 20 },  // IMPRESORA / MODELO
+        { wch: 35 },  // AREA ACTUAL
+        { wch: 18 },  // SERIE
+        { wch: 55 },  // OBS
+        { wch: 25 }   // CASO
+      ];
+      ws["!cols"] = colWidths;
+
+      // Append to workbook
+      XLSX.utils.book_append_sheet(wb, ws, "TI HNCH");
+
+      // 5. Write and save file
+      XLSX.writeFile(wb, `IMPRESORAS_ALQUILADAS_${dateStr.replace(/\//g, "-")}.xlsx`);
+    } catch (error) {
+      console.error("Error generating Excel report:", error);
+      alert("Error al descargar el reporte Excel: " + error.message);
     }
   };
 
@@ -631,7 +733,7 @@ export default function App() {
         const modelVal = eq.modelo || (matched ? matched.modelo : "MX431ADN");
         const areaVal = eq.area_actual || (matched ? matched.area_actual : "Soporte");
         const casVal = eq.codigo_caso_cas !== undefined && eq.codigo_caso_cas !== "" ? eq.codigo_caso_cas : (matched ? matched.codigo_caso_cas : "");
-        const obsVal = eq.observaciones !== undefined && eq.observaciones !== "" ? eq.observaciones : (matched ? matched.observaciones : "Importado desde Excel");
+        const obsVal = eq.observaciones !== undefined && eq.observaciones !== "" ? eq.observaciones : (matched && matched.observaciones ? matched.observaciones : "");
         const entityVal = eq.ubicacion_entidad || (matched ? matched.ubicacion_entidad : "Hospital");
 
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", snUpper);
@@ -943,9 +1045,9 @@ export default function App() {
           throw new Error(`El número de serie ${idSerieUpper} ya existe en el inventario. Se omitió la creación.`);
         }
 
-        const tonerVal = result.toner_nivel !== undefined ? Number(result.toner_nivel) : 100;
-        const unitVal = result.unidad_imagen_nivel !== undefined ? Number(result.unidad_imagen_nivel) : 100;
-        const maintVal = result.mantenimiento_kit_nivel !== undefined ? Number(result.mantenimiento_kit_nivel) : 100;
+        const tonerVal = (result.toner_nivel !== undefined && result.toner_nivel !== null) ? Number(result.toner_nivel) : 100;
+        const unitVal = (result.unidad_imagen_nivel !== undefined && result.unidad_imagen_nivel !== null) ? Number(result.unidad_imagen_nivel) : 100;
+        const maintVal = (result.mantenimiento_kit_nivel !== undefined && result.mantenimiento_kit_nivel !== null) ? Number(result.mantenimiento_kit_nivel) : 100;
         const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
 
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", idSerieUpper);
@@ -955,7 +1057,7 @@ export default function App() {
           area_actual: result.area_actual || "Soporte",
           codigo_caso_cas: result.codigo_caso_cas || "",
           estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal, maintVal),
-          observaciones: result.observaciones || "Registrado por la IA de asistencia",
+          observaciones: result.observaciones || "",
           ubicacion_entidad: result.ubicacion_entidad || "Hospital",
           consumibles: {
             toner_nivel: tonerVal,
@@ -1006,9 +1108,9 @@ export default function App() {
       // Default: Action is actualizar
       if (!matchedPrinter) {
         // Fallback: If AI wanted to update but it doesn't exist, create it automatically
-        const tonerVal = result.toner_nivel !== undefined ? Number(result.toner_nivel) : 100;
-        const unitVal = result.unidad_imagen_nivel !== undefined ? Number(result.unidad_imagen_nivel) : 100;
-        const maintVal = result.mantenimiento_kit_nivel !== undefined ? Number(result.mantenimiento_kit_nivel) : 100;
+        const tonerVal = (result.toner_nivel !== undefined && result.toner_nivel !== null) ? Number(result.toner_nivel) : 100;
+        const unitVal = (result.unidad_imagen_nivel !== undefined && result.unidad_imagen_nivel !== null) ? Number(result.unidad_imagen_nivel) : 100;
+        const maintVal = (result.mantenimiento_kit_nivel !== undefined && result.mantenimiento_kit_nivel !== null) ? Number(result.mantenimiento_kit_nivel) : 100;
         const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
 
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", idSerieUpper);
@@ -1017,7 +1119,7 @@ export default function App() {
           area_actual: result.area_actual || "Soporte",
           codigo_caso_cas: result.codigo_caso_cas || "",
           estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal, maintVal),
-          observaciones: result.observaciones || "Auto-creado tras reporte",
+          observaciones: result.observaciones || "",
           ubicacion_entidad: result.ubicacion_entidad || "Hospital",
           consumibles: {
             toner_nivel: tonerVal,
@@ -1064,9 +1166,9 @@ export default function App() {
         ]);
       } else {
         // Standard Update
-        const tonerVal = result.toner_nivel !== undefined ? Number(result.toner_nivel) : matchedPrinter.consumibles?.toner_nivel ?? 100;
-        const unitVal = result.unidad_imagen_nivel !== undefined ? Number(result.unidad_imagen_nivel) : matchedPrinter.consumibles?.unidad_imagen_nivel ?? 100;
-        const maintVal = result.mantenimiento_kit_nivel !== undefined ? Number(result.mantenimiento_kit_nivel) : matchedPrinter.consumibles?.mantenimiento_kit_nivel ?? 100;
+        const tonerVal = (result.toner_nivel !== undefined && result.toner_nivel !== null) ? Number(result.toner_nivel) : (matchedPrinter.consumibles?.toner_nivel ?? 100);
+        const unitVal = (result.unidad_imagen_nivel !== undefined && result.unidad_imagen_nivel !== null) ? Number(result.unidad_imagen_nivel) : (matchedPrinter.consumibles?.unidad_imagen_nivel ?? 100);
+        const maintVal = (result.mantenimiento_kit_nivel !== undefined && result.mantenimiento_kit_nivel !== null) ? Number(result.mantenimiento_kit_nivel) : (matchedPrinter.consumibles?.mantenimiento_kit_nivel ?? 100);
         const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
 
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", matchedPrinter.id_serie);
@@ -1559,13 +1661,25 @@ export default function App() {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <h2 className="font-headline-md text-xl text-on-background font-bold">Inventario de Impresoras</h2>
-                <button
-                  onClick={handleOpenCreateModal}
-                  className="flex items-center gap-1 px-3.5 py-2 bg-primary text-on-primary rounded-xl font-bold text-xs hover:bg-primary-container active:scale-95 transition-all shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-xs">add</span>
-                  Registrar Impresora
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadReport}
+                    className="flex items-center gap-1 px-3.5 py-2 bg-surface-container-high text-on-surface-variant rounded-xl font-bold text-xs hover:bg-outline-variant/30 active:scale-95 transition-all shadow-sm border border-outline-variant"
+                    title="Descargar reporte Excel"
+                  >
+                    <span className="material-symbols-outlined text-sm">download</span>
+                    <span>Reporte Excel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenCreateModal}
+                    className="flex items-center gap-1 px-3.5 py-2 bg-primary text-on-primary rounded-xl font-bold text-xs hover:bg-primary-container active:scale-95 transition-all shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-sm">add</span>
+                    <span>Registrar Impresora</span>
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-col gap-2">
@@ -2328,14 +2442,24 @@ export default function App() {
                               {hist.tipo_actualizacion || "Manual"}
                             </span>
                           </div>
-                          <span className="text-[10px] text-outline font-mono font-medium">
-                            {hist.fecha_lectura?.toDate 
-                              ? `${hist.fecha_lectura.toDate().toLocaleDateString("es-PE")} ${hist.fecha_lectura.toDate().toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}` 
-                              : hist.fecha_lectura 
-                                ? `${new Date(hist.fecha_lectura).toLocaleDateString("es-PE")} ${new Date(hist.fecha_lectura).toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}`
-                                : ""
-                            }
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-outline font-mono font-medium text-right">
+                              {hist.fecha_lectura?.toDate 
+                                ? `${hist.fecha_lectura.toDate().toLocaleDateString("es-PE")} ${hist.fecha_lectura.toDate().toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}` 
+                                : hist.fecha_lectura 
+                                  ? `${new Date(hist.fecha_lectura).toLocaleDateString("es-PE")} ${new Date(hist.fecha_lectura).toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}`
+                                  : ""
+                              }
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteHistoryItem(hist.id)}
+                              className="text-error hover:bg-error/10 p-0.5 rounded-full transition-colors active:scale-90 flex items-center justify-center"
+                              title="Eliminar de historial"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">delete</span>
+                            </button>
+                          </div>
                         </div>
 
                         {/* Change details */}
