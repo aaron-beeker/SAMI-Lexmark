@@ -77,6 +77,10 @@ export async function analizarEvidenciaSuministros(mensajeTexto, base64Imagen = 
     EXTRACCIÓN DEL ÁREA (Importante):
     - Si el usuario no indica un número de serie pero especifica un área en el texto o descripción (ej: "Oncología", "Admisión 10", "Cardiología"), debes extraer este nombre del área y colocarlo en el campo "area_actual". No dejes el JSON vacío si puedes identificar el área.
 
+    REGLAS IMPORTANTES PARA EL CAMPO "observaciones":
+    - NO generes resúmenes ni explicaciones de los niveles de consumibles (como "tóner al 100%, unidad al 15%...") en el campo "observaciones". Si la imagen solo reporta niveles normales o lecturas estándar de páginas, pon "observaciones" como una cadena vacía "".
+    - ÚNICAMENTE escribe en el campo "observaciones" si el usuario lo solicita explícitamente en su mensaje, o si la foto muestra un fallo físico, código de error en pantalla, o incidente explícito (como papel atascado, traba de hojas, piezas rotas, mantenimiento requerido, etc.).
+
     Especificaciones del JSON de respuesta según la acción:
 
     Para "crear" | "actualizar" | "eliminar":
