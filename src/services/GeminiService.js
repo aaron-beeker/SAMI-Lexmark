@@ -89,7 +89,7 @@ export async function analizarEvidenciaSuministros(mensajeTexto, base64Imagen = 
       "toner_nivel": number,
       "unidad_imagen_nivel": number,
       "mantenimiento_kit_nivel": number,
-      "estado_criticidad": "Estable|Advertencia|Crítico",
+      "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
       "observaciones": "string",
       "codigo_caso_cas": "string"
     }
@@ -168,12 +168,11 @@ export async function analizarImportacionExcel(filasJson) {
        - Clasifica "ubicacion_entidad" en "Hospital" o "MUR":
          - Si el área o el texto contiene "MUR", pon "MUR".
          - De lo contrario, pon "Hospital" (incluyendo si el área es "Soporte").
-       - Si "toner_nivel", "unidad_imagen_nivel" o "mantenimiento_kit_nivel" son null o no están definidos, devuélvelos como null. No inventes números a menos que se indiquen explícitamente en el texto de observaciones.
-       - Determina "estado_criticidad" según los niveles: "Crítico" (si alguno es 0% o tiene observaciones graves de falla inoperativa), "Advertencia" (si alguno es <= 15%), "Estable" (si todos son > 15%). Si los niveles son null, determina la criticidad basándote únicamente en las observaciones (ej. si dice "inoperativa" es "Crítico", de lo contrario es "Estable").
+       - Determina "estado_funcionamiento" según la lógica: "Inoperativo" (si está en Soporte y tiene observaciones de fallas graves o consumibles al 0%), "Advertencia" (si algún consumible es <= 15% o tiene observaciones/detalles y no está inoperativo), "Operativo" (de lo contrario).
        - Limpia y formatea "observaciones" y "codigo_caso_cas".
     2. Generar un informe de análisis (reporte_resumen) en lenguaje natural y profesional (español) para el técnico. Este reporte debe resumir:
        - El número total de equipos analizados.
-       - Cuántos equipos están estables, cuántos en advertencia y cuántos críticos.
+       - Cuántos equipos están operativos, cuántos en advertencia y cuántos inoperativos.
        - Qué equipos requieren atención inmediata (por S/N y área).
        - Alguna observación relevante o recomendación sobre el stock de repuestos para estos modelos.
 
@@ -188,7 +187,7 @@ export async function analizarImportacionExcel(filasJson) {
           "toner_nivel": number,
           "unidad_imagen_nivel": number,
           "mantenimiento_kit_nivel": number,
-          "estado_criticidad": "Estable|Advertencia|Crítico",
+          "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
           "observaciones": "string",
           "codigo_caso_cas": "string"
         }

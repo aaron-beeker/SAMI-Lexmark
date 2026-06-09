@@ -41,10 +41,12 @@ export default function App() {
   const [editToner, setEditToner] = useState(100);
   const [editUnit, setEditUnit] = useState(100);
   const [editMantenimiento, setEditMantenimiento] = useState(100);
-  const [editCriticidad, setEditCriticidad] = useState("Estable");
+
   const [editObservaciones, setEditObservaciones] = useState("");
   const [editCasCode, setEditCasCode] = useState("");
   const [editUbicacion, setEditUbicacion] = useState("Hospital");
+  const [editFuncionamiento, setEditFuncionamiento] = useState("Operativo");
+  const [editFuncionamientoAuto, setEditFuncionamientoAuto] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [savingStock, setSavingStock] = useState(false);
   const [isCreateMode, setIsCreateMode] = useState(false);
@@ -208,19 +210,91 @@ export default function App() {
     }
   }, [selectedPrinter]);
 
-  // Compute KPI values
-  const kpiTotal = printers.length;
-  const kpiCritical = printers.filter(p => p.estado_criticidad === "Crítico").length;
-  const kpiUpcoming = printers.filter(p => {
+  const calculatePrinterStatus = (area, toner, unit, maintenance, observaciones, ubicacion = "Hospital") => {
+    const cleanArea = (area || "").toLowerCase().trim();
+    const cleanObs = (observaciones || "").toLowerCase().trim();
+    const cleanUbicacion = (ubicacion || "").toLowerCase().trim();
+    
+    const isNonServiceArea = cleanArea.includes("soporte") || 
+                             cleanArea.includes("mur") || 
+                             cleanUbicacion.includes("mur");
+    
+    const tonerVal = Number(toner ?? 100);
+    const unitVal = Number(unit ?? 100);
+    const maintVal = Number(maintenance ?? 100);
+
+    const levelIsZero = tonerVal === 0 || unitVal === 0 || maintVal === 0;
+
+    const hasSeriousObs = cleanObs.includes("inoperativa") || 
+                          cleanObs.includes("inoperativo") || 
+                          cleanObs.includes("malograda") || 
+                          cleanObs.includes("malogrado") || 
+                          cleanObs.includes("dañada") || 
+                          cleanObs.includes("dañado") || 
+                          cleanObs.includes("baja") || 
+                          cleanObs.includes("mal estado") || 
+                          cleanObs.includes("inoperable") ||
+                          cleanObs.includes("falta") ||
+                          cleanObs.includes("error");
+
+    if (isNonServiceArea && (hasSeriousObs || levelIsZero)) {
+      return "Inoperativo";
+    }
+
+    const hasWarningObs = cleanObs.includes("traba") ||
+                          cleanObs.includes("atasco") ||
+                          cleanObs.includes("mantenimiento") ||
+                          cleanObs.includes("limpieza") ||
+                          cleanObs.includes("detalles");
+
+    const levelIsLow = tonerVal <= 15 || unitVal <= 15 || maintVal <= 15;
+
+    // In an active service area, a critical fault or 0% level becomes a warning (Advertencia)
+    // because the printer is still assigned and in service.
+    if (levelIsLow || hasWarningObs || hasSeriousObs || levelIsZero) {
+      return "Advertencia";
+    }
+
+    return "Operativo";
+  };
+
+  // Helper to get unified printer status (safe check with fallback)
+  const getPrinterStatus = (p) => {
+    if (p.estado_funcionamiento_manual === true) {
+      return p.estado_funcionamiento || "Operativo";
+    }
     const toner = p.consumibles?.toner_nivel ?? 100;
     const unit = p.consumibles?.unidad_imagen_nivel ?? 100;
     const maint = p.consumibles?.mantenimiento_kit_nivel ?? 100;
-    return toner <= 15 || unit <= 15 || maint <= 15;
-  }).length;
+    return calculatePrinterStatus(p.area_actual, toner, unit, maint, p.observaciones, p.ubicacion_entidad);
+  };
+
+  // Helper to check if a printer is inoperative (safe check with fallback)
+  const isPrinterInoperative = (p) => {
+    return getPrinterStatus(p) === "Inoperativo";
+  };
+
+  // Reactively calculate functioning status when form inputs change if auto-calculate is enabled
+  useEffect(() => {
+    if (editFuncionamientoAuto) {
+      const computed = calculatePrinterStatus(editArea, Number(editToner), Number(editUnit), Number(editMantenimiento), editObservaciones, editUbicacion);
+      setEditFuncionamiento(computed);
+    }
+  }, [editArea, editToner, editUnit, editMantenimiento, editObservaciones, editUbicacion, editFuncionamientoAuto]);
+
+  // Compute KPI values based on unified status
+  const kpiTotal = printers.length;
+  const kpiOperativas = printers.filter(p => getPrinterStatus(p) === "Operativo").length;
+  const kpiAdvertencias = printers.filter(p => getPrinterStatus(p) === "Advertencia").length;
+  const kpiInoperativas = printers.filter(p => getPrinterStatus(p) === "Inoperativo").length;
 
   // Physical Location & Service breakdowns
   const kpiHospitalTotal = printers.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital").length;
-  const kpiHospitalEnServicio = printers.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && p.area_actual !== "Soporte").length;
+  const kpiHospitalEnServicio = printers.filter(p => 
+    (p.ubicacion_entidad || "Hospital") === "Hospital" && 
+    p.area_actual !== "Soporte" && 
+    getPrinterStatus(p) !== "Inoperativo"
+  ).length;
   const kpiHospitalEnSoporte = printers.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && p.area_actual === "Soporte").length;
   const kpiMurTotal = printers.filter(p => p.ubicacion_entidad === "MUR").length;
 
@@ -239,13 +313,23 @@ export default function App() {
     setEditIdSerie(printer.id_serie);
     setEditModelo(printer.modelo);
     setEditArea(printer.area_actual || "");
-    setEditToner(printer.consumibles?.toner_nivel ?? 100);
-    setEditUnit(printer.consumibles?.unidad_imagen_nivel ?? 100);
-    setEditMantenimiento(printer.consumibles?.mantenimiento_kit_nivel ?? 100);
-    setEditCriticidad(printer.estado_criticidad || "Estable");
-    setEditObservaciones(printer.observaciones || "");
+    const tonerVal = printer.consumibles?.toner_nivel ?? 100;
+    const unitVal = printer.consumibles?.unidad_imagen_nivel ?? 100;
+    const maintVal = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
+    setEditToner(tonerVal);
+    setEditUnit(unitVal);
+    setEditMantenimiento(maintVal);
+    const obsVal = printer.observaciones || "";
+    setEditObservaciones(obsVal);
     setEditCasCode(printer.codigo_caso_cas || "");
     setEditUbicacion(printer.ubicacion_entidad || "Hospital");
+
+    // Initialize functioning status and check if it matches auto-calculation
+    const storedStatus = printer.estado_funcionamiento || getPrinterStatus(printer);
+    const calculated = calculatePrinterStatus(printer.area_actual || "", tonerVal, unitVal, maintVal, obsVal, printer.ubicacion_entidad || "Hospital");
+    setEditFuncionamiento(storedStatus);
+    setEditFuncionamientoAuto(storedStatus === calculated);
+
     setIsModalOpen(true);
   };
 
@@ -259,10 +343,12 @@ export default function App() {
     setEditToner(100);
     setEditUnit(100);
     setEditMantenimiento(100);
-    setEditCriticidad("Estable");
+
     setEditObservaciones("");
     setEditCasCode("");
     setEditUbicacion("Hospital");
+    setEditFuncionamiento("Operativo");
+    setEditFuncionamientoAuto(true);
     setSelectedPrinterHistory([]);
     setIsModalOpen(true);
   };
@@ -272,12 +358,6 @@ export default function App() {
     setSelectedPrinter(null);
   };
 
-  // Helper to determine status based on toner/unit/maintenance levels
-  const calculateCriticidad = (toner, unit, maintenance) => {
-    if (toner === 0 || unit === 0 || (maintenance !== undefined && maintenance === 0)) return "Crítico";
-    if (toner <= 15 || unit <= 15 || (maintenance !== undefined && maintenance <= 15)) return "Advertencia";
-    return "Estable";
-  };
 
   // Submit Edit or Create Modal Changes to Firestore
   const handleSavePrinterChanges = async (e) => {
@@ -291,7 +371,9 @@ export default function App() {
 
     setSavingEdit(true);
     try {
-      const computedCrit = calculateCriticidad(Number(editToner), Number(editUnit), Number(editMantenimiento));
+      const computedFuncionamiento = editFuncionamientoAuto
+        ? calculatePrinterStatus(editArea, Number(editToner), Number(editUnit), Number(editMantenimiento), editObservaciones, editUbicacion)
+        : editFuncionamiento;
       const prediction = calcularFechasPredictivas(Number(editToner), Number(editUnit), Number(editMantenimiento));
 
       const docRef = doc(
@@ -317,7 +399,8 @@ export default function App() {
           modelo: editModelo,
           area_actual: editArea,
           codigo_caso_cas: editCasCode,
-          estado_criticidad: computedCrit,
+          estado_funcionamiento: computedFuncionamiento,
+          estado_funcionamiento_manual: !editFuncionamientoAuto,
           observaciones: editObservaciones || "",
           ubicacion_entidad: editUbicacion,
           consumibles: {
@@ -337,7 +420,8 @@ export default function App() {
           toner_nivel: Number(editToner),
           unidad_imagen_nivel: Number(editUnit),
           mantenimiento_kit_nivel: Number(editMantenimiento),
-          estado_criticidad: computedCrit,
+          estado_funcionamiento: computedFuncionamiento,
+          estado_funcionamiento_manual: !editFuncionamientoAuto,
           observaciones: printerDoc.observaciones,
           codigo_caso_cas: editCasCode,
           ubicacion_entidad: editUbicacion,
@@ -354,7 +438,8 @@ export default function App() {
           modelo: editModelo,
           area_actual: editArea,
           codigo_caso_cas: editCasCode,
-          estado_criticidad: computedCrit,
+          estado_funcionamiento: computedFuncionamiento,
+          estado_funcionamiento_manual: !editFuncionamientoAuto,
           observaciones: editObservaciones,
           ubicacion_entidad: editUbicacion,
           "consumibles.toner_nivel": Number(editToner),
@@ -372,7 +457,8 @@ export default function App() {
           toner_nivel: Number(editToner),
           unidad_imagen_nivel: Number(editUnit),
           mantenimiento_kit_nivel: Number(editMantenimiento),
-          estado_criticidad: computedCrit,
+          estado_funcionamiento: computedFuncionamiento,
+          estado_funcionamiento_manual: !editFuncionamientoAuto,
           observaciones: editObservaciones,
           codigo_caso_cas: editCasCode,
           ubicacion_entidad: editUbicacion,
@@ -392,7 +478,7 @@ export default function App() {
         toner_nivel: Number(editToner),
         unidad_imagen_nivel: Number(editUnit),
         mantenimiento_kit_nivel: Number(editMantenimiento),
-        estado_criticidad: computedCrit,
+        estado_funcionamiento: computedFuncionamiento,
         observaciones: editObservaciones || "",
         codigo_caso_cas: editCasCode,
         tipo_actualizacion: isCreateMode ? "Manual (Creado)" : "Manual",
@@ -486,9 +572,7 @@ export default function App() {
 
       // Helper to check if a printer is inoperative
       const isInoperative = (p) => {
-        const obs = (p.observaciones || "").toLowerCase();
-        const area = (p.area_actual || "").toLowerCase();
-        return area.includes("soporte") || obs.includes("inoperativa") || obs.includes("inoperativo") || obs.includes("malograda") || obs.includes("malogrado");
+        return isPrinterInoperative(p);
       };
 
       // 2. Sort printers: operative first by area, then inoperative by area
@@ -643,14 +727,14 @@ export default function App() {
           }
 
           const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
-          const computedCrit = calculateCriticidad(tonerVal, unitVal, maintVal);
+          const computedFuncionamiento = calculatePrinterStatus(printer.area_actual, tonerVal, unitVal, maintVal, printer.observaciones, printer.ubicacion_entidad);
 
           const updateData = {
             "consumibles.toner_nivel": tonerVal,
             "consumibles.unidad_imagen_nivel": unitVal,
             "consumibles.mantenimiento_kit_nivel": maintVal,
             "consumibles.ultima_lectura": new Date(),
-            estado_criticidad: computedCrit,
+            estado_funcionamiento: computedFuncionamiento,
             prediccion: prediction
           };
 
@@ -661,7 +745,7 @@ export default function App() {
             toner_nivel: tonerVal,
             unidad_imagen_nivel: unitVal,
             mantenimiento_kit_nivel: maintVal,
-            estado_criticidad: computedCrit,
+            estado_funcionamiento: computedFuncionamiento,
             observaciones: `Reemplazo e instalación de ${insumo} nuevo desde stock ${origin}.`,
             codigo_caso_cas: printer.codigo_caso_cas || "",
             ubicacion_entidad: printer.ubicacion_entidad || "Hospital",
@@ -680,7 +764,7 @@ export default function App() {
             toner_nivel: tonerVal,
             unidad_imagen_nivel: unitVal,
             mantenimiento_kit_nivel: maintVal,
-            estado_criticidad: computedCrit,
+            estado_funcionamiento: computedFuncionamiento,
             observaciones: `Reemplazo e instalación de ${insumo} nuevo desde stock ${origin}.`,
             codigo_caso_cas: printer.codigo_caso_cas || "",
             tipo_actualizacion: "Reemplazo de Repuesto",
@@ -930,7 +1014,6 @@ export default function App() {
         }
 
         const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
-        const computedCrit = calculateCriticidad(tonerVal, unitVal, maintVal);
 
         const modelVal = eq.modelo || (matched ? matched.modelo : "MX431ADN");
         const areaVal = eq.area_actual || (matched ? matched.area_actual : "Soporte");
@@ -938,13 +1021,15 @@ export default function App() {
         const obsVal = eq.observaciones !== undefined && eq.observaciones !== "" ? eq.observaciones : (matched && matched.observaciones ? matched.observaciones : "");
         const entityVal = eq.ubicacion_entidad || (matched ? matched.ubicacion_entidad : "Hospital");
 
+        const computedFuncionamiento = calculatePrinterStatus(areaVal, tonerVal, unitVal, maintVal, obsVal);
+
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", snUpper);
 
         const printerDoc = {
           modelo: modelVal,
           area_actual: areaVal,
           codigo_caso_cas: casVal,
-          estado_criticidad: eq.estado_criticidad || computedCrit,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: obsVal,
           ubicacion_entidad: entityVal,
           consumibles: {
@@ -963,7 +1048,7 @@ export default function App() {
           toner_nivel: tonerVal,
           unidad_imagen_nivel: unitVal,
           mantenimiento_kit_nivel: maintVal,
-          estado_criticidad: printerDoc.estado_criticidad,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: printerDoc.observaciones,
           codigo_caso_cas: printerDoc.codigo_caso_cas,
           ubicacion_entidad: printerDoc.ubicacion_entidad,
@@ -981,7 +1066,7 @@ export default function App() {
           toner_nivel: tonerVal,
           unidad_imagen_nivel: unitVal,
           mantenimiento_kit_nivel: maintVal,
-          estado_criticidad: printerDoc.estado_criticidad,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: printerDoc.observaciones || "",
           codigo_caso_cas: printerDoc.codigo_caso_cas || "",
           tipo_actualizacion: "Importación Excel (IA)",
@@ -1286,6 +1371,7 @@ export default function App() {
           toner_nivel: 0,
           unidad_imagen_nivel: 0,
           mantenimiento_kit_nivel: 0,
+          estado_funcionamiento: "Inoperativo",
           estado_criticidad: "Eliminado",
           observaciones: `Impresora eliminada vía chat de IA.`,
           codigo_caso_cas: matchedPrinter.codigo_caso_cas || "",
@@ -1315,6 +1401,7 @@ export default function App() {
         const unitVal = (result.unidad_imagen_nivel !== undefined && result.unidad_imagen_nivel !== null) ? Number(result.unidad_imagen_nivel) : 100;
         const maintVal = (result.mantenimiento_kit_nivel !== undefined && result.mantenimiento_kit_nivel !== null) ? Number(result.mantenimiento_kit_nivel) : 100;
         const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+        const computedFuncionamiento = calculatePrinterStatus(result.area_actual || "Soporte", tonerVal, unitVal, maintVal, result.observaciones || "", result.ubicacion_entidad || "Hospital");
 
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", idSerieUpper);
 
@@ -1322,7 +1409,7 @@ export default function App() {
           modelo: result.modelo || "MX431ADN",
           area_actual: result.area_actual || "Soporte",
           codigo_caso_cas: result.codigo_caso_cas || "",
-          estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal, maintVal),
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: result.observaciones || "",
           ubicacion_entidad: result.ubicacion_entidad || "Hospital",
           consumibles: {
@@ -1342,7 +1429,7 @@ export default function App() {
           toner_nivel: tonerVal,
           unidad_imagen_nivel: unitVal,
           mantenimiento_kit_nivel: maintVal,
-          estado_criticidad: newPrinter.estado_criticidad,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: newPrinter.observaciones,
           codigo_caso_cas: newPrinter.codigo_caso_cas,
           ubicacion_entidad: newPrinter.ubicacion_entidad,
@@ -1361,7 +1448,7 @@ export default function App() {
           toner_nivel: tonerVal,
           unidad_imagen_nivel: unitVal,
           mantenimiento_kit_nivel: maintVal,
-          estado_criticidad: newPrinter.estado_criticidad,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: newPrinter.observaciones,
           codigo_caso_cas: newPrinter.codigo_caso_cas,
           tipo_actualizacion: "Gemini AI (Creado)",
@@ -1379,7 +1466,7 @@ export default function App() {
 - Nivel de Tóner: ${tonerVal}% (Cambio est.: ${prediction.fecha_cambio_toner})
 - Unidad de Imagen: ${unitVal}% (Cambio est.: ${prediction.fecha_cambio_unidad})
 - Kit de Mantenimiento: ${maintVal}% (Cambio est.: ${prediction.fecha_cambio_mantenimiento})
-- Criticidad: ${newPrinter.estado_criticidad}
+- Estado: ${newPrinter.estado_funcionamiento}
 - Notas: "${newPrinter.observaciones}"`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }
@@ -1395,13 +1482,14 @@ export default function App() {
         const unitVal = (result.unidad_imagen_nivel !== undefined && result.unidad_imagen_nivel !== null) ? Number(result.unidad_imagen_nivel) : 100;
         const maintVal = (result.mantenimiento_kit_nivel !== undefined && result.mantenimiento_kit_nivel !== null) ? Number(result.mantenimiento_kit_nivel) : 100;
         const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+        const computedFuncionamiento = calculatePrinterStatus(result.area_actual || "Soporte", tonerVal, unitVal, maintVal, result.observaciones || "", result.ubicacion_entidad || "Hospital");
 
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", idSerieUpper);
         const newPrinter = {
           modelo: result.modelo || "MX431ADN",
           area_actual: result.area_actual || "Soporte",
           codigo_caso_cas: result.codigo_caso_cas || "",
-          estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal, maintVal),
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: result.observaciones || "",
           ubicacion_entidad: result.ubicacion_entidad || "Hospital",
           consumibles: {
@@ -1421,7 +1509,7 @@ export default function App() {
           toner_nivel: tonerVal,
           unidad_imagen_nivel: unitVal,
           mantenimiento_kit_nivel: maintVal,
-          estado_criticidad: newPrinter.estado_criticidad,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: newPrinter.observaciones,
           codigo_caso_cas: newPrinter.codigo_caso_cas,
           ubicacion_entidad: newPrinter.ubicacion_entidad,
@@ -1440,7 +1528,7 @@ export default function App() {
           toner_nivel: tonerVal,
           unidad_imagen_nivel: unitVal,
           mantenimiento_kit_nivel: maintVal,
-          estado_criticidad: newPrinter.estado_criticidad,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: newPrinter.observaciones,
           codigo_caso_cas: newPrinter.codigo_caso_cas,
           tipo_actualizacion: "Gemini AI (Auto-creado)",
@@ -1460,7 +1548,7 @@ export default function App() {
 - Nivel de Tóner: ${tonerVal}% (Cambio est.: ${prediction.fecha_cambio_toner})
 - Unidad de Imagen: ${unitVal}% (Cambio est.: ${prediction.fecha_cambio_unidad})
 - Kit de Mantenimiento: ${maintVal}% (Cambio est.: ${prediction.fecha_cambio_mantenimiento})
-- Criticidad: ${newPrinter.estado_criticidad}`,
+- Estado: ${newPrinter.estado_funcionamiento}`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }
         ]);
@@ -1470,16 +1558,26 @@ export default function App() {
         const unitVal = (result.unidad_imagen_nivel !== undefined && result.unidad_imagen_nivel !== null) ? Number(result.unidad_imagen_nivel) : (matchedPrinter.consumibles?.unidad_imagen_nivel ?? 100);
         const maintVal = (result.mantenimiento_kit_nivel !== undefined && result.mantenimiento_kit_nivel !== null) ? Number(result.mantenimiento_kit_nivel) : (matchedPrinter.consumibles?.mantenimiento_kit_nivel ?? 100);
         const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+        const computedFuncionamiento = calculatePrinterStatus(
+          result.area_actual || matchedPrinter.area_actual || "Soporte",
+          tonerVal,
+          unitVal,
+          maintVal,
+          result.observaciones || matchedPrinter.observaciones || "",
+          result.ubicacion_entidad || matchedPrinter.ubicacion_entidad || "Hospital"
+        );
 
         const docRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", matchedPrinter.id_serie);
+
+        const obsVal = result.observaciones || matchedPrinter.observaciones || "";
 
         const updateData = {
           modelo: result.modelo || matchedPrinter.modelo,
           area_actual: result.area_actual || matchedPrinter.area_actual,
           ubicacion_entidad: result.ubicacion_entidad || matchedPrinter.ubicacion_entidad || "Hospital",
           codigo_caso_cas: result.codigo_caso_cas !== undefined ? result.codigo_caso_cas : matchedPrinter.codigo_caso_cas || "",
-          estado_criticidad: result.estado_criticidad || calculateCriticidad(tonerVal, unitVal, maintVal),
-          observaciones: result.observaciones || matchedPrinter.observaciones,
+          estado_funcionamiento: computedFuncionamiento,
+          observaciones: obsVal,
           "consumibles.toner_nivel": tonerVal,
           "consumibles.unidad_imagen_nivel": unitVal,
           "consumibles.mantenimiento_kit_nivel": maintVal,
@@ -1495,7 +1593,7 @@ export default function App() {
           toner_nivel: tonerVal,
           unidad_imagen_nivel: unitVal,
           mantenimiento_kit_nivel: maintVal,
-          estado_criticidad: updateData.estado_criticidad,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: updateData.observaciones,
           codigo_caso_cas: updateData.codigo_caso_cas,
           ubicacion_entidad: updateData.ubicacion_entidad,
@@ -1514,7 +1612,7 @@ export default function App() {
           toner_nivel: tonerVal,
           unidad_imagen_nivel: unitVal,
           mantenimiento_kit_nivel: maintVal,
-          estado_criticidad: updateData.estado_criticidad,
+          estado_funcionamiento: computedFuncionamiento,
           observaciones: updateData.observaciones || "",
           codigo_caso_cas: updateData.codigo_caso_cas || "",
           tipo_actualizacion: "Gemini AI",
@@ -1533,7 +1631,7 @@ export default function App() {
 - Nivel de Tóner: ${tonerVal}% (Autonomía: ${prediction.dias_restantes_toner} días)
 - Unidad de Imagen: ${unitVal}% (Autonomía: ${prediction.dias_restantes_unidad} días)
 - Kit de Mantenimiento: ${maintVal}% (Autonomía: ${prediction.dias_restantes_mantenimiento} días)
-- Criticidad: ${updateData.estado_criticidad}
+- Estado: ${updateData.estado_funcionamiento}
 - Notas: "${updateData.observaciones || 'Sin observaciones'}"`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           }
@@ -1563,7 +1661,7 @@ export default function App() {
       p.area_actual.toLowerCase().includes(searchText.toLowerCase());
 
     if (filterCriticidad === "all") return matchesSearch;
-    return matchesSearch && p.estado_criticidad === filterCriticidad;
+    return matchesSearch && getPrinterStatus(p) === filterCriticidad;
   });
 
   return (
@@ -1597,29 +1695,35 @@ export default function App() {
           <div className="space-y-6 animate-fade-in">
             {/* KPI Cards Grid */}
             <section className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 p-5 bg-surface border border-outline-variant rounded-2xl shadow-sm flex flex-col justify-between h-32 relative overflow-hidden group">
-                <div className="absolute right-4 top-4 text-primary/10 group-hover:scale-110 transition-transform">
-                  <span className="material-symbols-outlined text-6xl">print</span>
+              <div
+                onClick={() => {
+                  setFilterCriticidad("all");
+                  setCurrentTab("inventario");
+                }}
+                className="p-5 bg-surface border border-outline-variant rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97] relative overflow-hidden group"
+              >
+                <div className="absolute right-3 top-3 text-primary/10 group-hover:scale-110 transition-transform">
+                  <span className="material-symbols-outlined text-4xl">print</span>
                 </div>
-                <p className="text-on-surface-variant font-medium">Total Impresoras</p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-extrabold text-primary">{loadingPrinters ? "..." : kpiTotal}</span>
-
-                </div>
+                <p className="text-on-surface-variant font-semibold text-xs flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm">inventory_2</span>
+                  Total Equipos
+                </p>
+                <span className="text-3xl font-extrabold text-primary">{loadingPrinters ? "..." : kpiTotal}</span>
               </div>
 
               <div
                 onClick={() => {
-                  setFilterCriticidad("Crítico");
+                  setFilterCriticidad("Operativo");
                   setCurrentTab("inventario");
                 }}
-                className="p-5 bg-error-container border border-error/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
+                className="p-5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
               >
-                <p className="text-error font-semibold flex items-center gap-1.5 text-xs">
-                  <span className="material-symbols-outlined text-sm">error</span>
-                  Alertas Críticas
+                <p className="text-emerald-600 font-semibold flex items-center gap-1.5 text-xs">
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                  Operativas
                 </p>
-                <span className="text-3xl font-extrabold text-on-error-container">{loadingPrinters ? "..." : kpiCritical}</span>
+                <span className="text-3xl font-extrabold text-emerald-700">{loadingPrinters ? "..." : kpiOperativas}</span>
               </div>
 
               <div
@@ -1627,13 +1731,27 @@ export default function App() {
                   setFilterCriticidad("Advertencia");
                   setCurrentTab("inventario");
                 }}
-                className="p-5 bg-tertiary-fixed border border-tertiary/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
+                className="p-5 bg-amber-500/10 border border-amber-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
               >
-                <p className="text-tertiary font-semibold flex items-center gap-1.5 text-xs">
-                  <span className="material-symbols-outlined text-sm">schedule</span>
-                  Próximos Cambios
+                <p className="text-amber-600 font-semibold flex items-center gap-1.5 text-xs">
+                  <span className="material-symbols-outlined text-sm">warning</span>
+                  Advertencia
                 </p>
-                <span className="text-3xl font-extrabold text-on-tertiary-fixed">{loadingPrinters ? "..." : kpiUpcoming}</span>
+                <span className="text-3xl font-extrabold text-amber-700">{loadingPrinters ? "..." : kpiAdvertencias}</span>
+              </div>
+
+              <div
+                onClick={() => {
+                  setFilterCriticidad("Inoperativo");
+                  setCurrentTab("inventario");
+                }}
+                className="p-5 bg-rose-500/10 border border-rose-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
+              >
+                <p className="text-rose-600 font-semibold flex items-center gap-1.5 text-xs">
+                  <span className="material-symbols-outlined text-sm">cancel</span>
+                  Inoperativas
+                </p>
+                <span className="text-3xl font-extrabold text-rose-700">{loadingPrinters ? "..." : kpiInoperativas}</span>
               </div>
             </section>
 
@@ -1707,57 +1825,67 @@ export default function App() {
               <div className="space-y-3">
                 {loadingPrinters ? (
                   <div className="p-8 text-center text-outline-variant">Cargando datos...</div>
-                ) : printers.filter(p => p.estado_criticidad !== "Estable").length === 0 ? (
+                ) : printers.filter(p => getPrinterStatus(p) !== "Operativo").length === 0 ? (
                   <div className="p-8 text-center bg-surface-container-lowest border border-outline-variant rounded-2xl text-on-surface-variant flex flex-col items-center gap-2">
                     <span className="material-symbols-outlined text-green-500 text-3xl">check_circle</span>
-                    <p className="font-semibold">Todos los suministros están estables</p>
+                    <p className="font-semibold">Todos los equipos están operativos</p>
                   </div>
                 ) : (
                   printers
-                    .filter(p => p.estado_criticidad !== "Estable")
+                    .filter(p => getPrinterStatus(p) !== "Operativo")
                     .slice(0, 3)
-                    .map((printer) => (
-                      <div
-                        key={printer.id_serie}
-                        onClick={() => handleOpenEditModal(printer)}
-                        className={`p-4 border rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98] ${printer.estado_criticidad === "Crítico"
-                          ? "bg-error-container/10 border-error/20"
-                          : "bg-surface-container-lowest border-outline-variant"
-                          }`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="flex gap-1.5 flex-wrap items-center">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${printer.estado_criticidad === "Crítico"
-                                ? "bg-error-container text-error"
-                                : "bg-surface-variant text-outline"
-                                }`}>
-                                S/N: {printer.id_serie}
-                              </span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${(printer.ubicacion_entidad || "Hospital") === "Hospital"
-                                ? "bg-primary-fixed/30 text-primary border border-primary/10"
-                                : "bg-secondary-fixed/30 text-secondary border border-secondary/10"
-                                }`}>
-                                <span className="material-symbols-outlined text-[11px]">
-                                  {(printer.ubicacion_entidad || "Hospital") === "Hospital" ? "local_hospital" : "corporate_fare"}
+                    .map((printer) => {
+                      const status = getPrinterStatus(printer);
+                      return (
+                        <div
+                          key={printer.id_serie}
+                          onClick={() => handleOpenEditModal(printer)}
+                          className={`p-4 border rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98] ${status === "Inoperativo"
+                            ? "bg-rose-500/5 border-rose-500/20"
+                            : "bg-surface-container-lowest border-outline-variant"
+                            }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="flex gap-1.5 flex-wrap items-center">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${status === "Inoperativo"
+                                  ? "bg-rose-500/10 text-rose-700"
+                                  : "bg-surface-variant text-outline"
+                                  }`}>
+                                  S/N: {printer.id_serie}
                                 </span>
-                                {(printer.ubicacion_entidad || "Hospital") === "Hospital"
-                                  ? `Hospital (${printer.area_actual === "Soporte" ? "En Soporte" : "En Servicio"})`
-                                  : "MUR"
-                                }
-                              </span>
+                                {printer.codigo_caso_cas && (
+                                  <span className="text-[10px] font-bold text-primary px-2 py-0.5 bg-primary-fixed rounded-md max-w-[120px] truncate" title={printer.codigo_caso_cas}>
+                                    CAS: {printer.codigo_caso_cas}
+                                  </span>
+                                )}
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${(printer.ubicacion_entidad || "Hospital") === "Hospital"
+                                  ? "bg-primary-fixed/30 text-primary border border-primary/10"
+                                  : "bg-secondary-fixed/30 text-secondary border border-secondary/10"
+                                  }`}>
+                                  <span className="material-symbols-outlined text-[11px]">
+                                    {(printer.ubicacion_entidad || "Hospital") === "Hospital" ? "local_hospital" : "corporate_fare"}
+                                  </span>
+                                  {(printer.ubicacion_entidad || "Hospital") === "Hospital"
+                                    ? `Hospital (${printer.area_actual === "Soporte" ? "En Soporte" : "En Servicio"})`
+                                    : "MUR"
+                                  }
+                                </span>
+                              </div>
+                              <h3 className="font-bold text-base mt-1 text-on-background">{printer.modelo}</h3>
+                              <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
                             </div>
-                            <h3 className="font-bold text-base mt-1 text-on-background">{printer.modelo}</h3>
-                            <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
-                          </div>
 
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${printer.estado_criticidad === "Crítico"
-                            ? "bg-error-container text-error border-error/20 animate-pulse-subtle"
-                            : "bg-tertiary-fixed text-tertiary border-tertiary/20"
-                            }`}>
-                            {printer.estado_criticidad === "Crítico" ? "Crítico" : "Bajo Suministro"}
-                          </span>
-                        </div>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${status === "Inoperativo"
+                              ? "bg-rose-500/10 text-rose-600 border-rose-500/20 animate-pulse-subtle"
+                              : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                              }`}>
+                              <span className="material-symbols-outlined text-[11px]">
+                                {status === "Inoperativo" ? "cancel" : "warning"}
+                              </span>
+                              {status} {status !== "Inoperativo" ? ((printer.ubicacion_entidad || "Hospital") === "Hospital" && !(printer.area_actual || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
+                            </span>
+                          </div>
 
                         {/* Progress Indicators */}
                         <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30">
@@ -1808,7 +1936,8 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                    ))
+                    );
+                  })
                 )}
               </div>
             </section>
@@ -2024,9 +2153,9 @@ export default function App() {
                 <div className="flex gap-1.5 overflow-x-auto scrollbar-hide py-1">
                   {[
                     { id: "all", label: "Todas" },
-                    { id: "Estable", label: "Estables" },
-                    { id: "Advertencia", label: "Advertencia" },
-                    { id: "Crítico", label: "Críticas" }
+                    { id: "Operativo", label: "Operativas" },
+                    { id: "Advertencia", label: "Advertencias" },
+                    { id: "Inoperativo", label: "Inoperativas" }
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -2056,18 +2185,18 @@ export default function App() {
               </div>
               
               <div className="grid grid-cols-2 gap-4 text-[11px]">
-                {/* Breakdown by Criticidad */}
+                {/* Breakdown by Status */}
                 <div className="space-y-1">
                   <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Por Estado</span>
                   <div className="flex flex-wrap gap-1">
-                    <span className="bg-error-container/20 text-error px-1.5 py-0.5 rounded font-semibold text-[10px]">
-                      Críticos: {filteredPrinters.filter(p => p.estado_criticidad === "Crítico").length}
+                    <span className="bg-emerald-500/10 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-500/20 font-semibold text-[10px]">
+                      Operativas: {filteredPrinters.filter(p => getPrinterStatus(p) === "Operativo").length}
                     </span>
-                    <span className="bg-tertiary-fixed/20 text-tertiary px-1.5 py-0.5 rounded font-semibold text-[10px]">
-                      Adver: {filteredPrinters.filter(p => p.estado_criticidad === "Advertencia").length}
+                    <span className="bg-amber-500/10 text-amber-700 px-1.5 py-0.5 rounded border border-amber-500/20 font-semibold text-[10px]">
+                      Advertencias: {filteredPrinters.filter(p => getPrinterStatus(p) === "Advertencia").length}
                     </span>
-                    <span className="bg-green-100/50 text-green-700 px-1.5 py-0.5 rounded font-semibold text-[10px]">
-                      Estab: {filteredPrinters.filter(p => p.estado_criticidad === "Estable").length}
+                    <span className="bg-rose-500/10 text-rose-700 px-1.5 py-0.5 rounded border border-rose-500/20 font-semibold text-[10px]">
+                      Inoperativas: {filteredPrinters.filter(p => getPrinterStatus(p) === "Inoperativo").length}
                     </span>
                   </div>
                 </div>
@@ -2142,17 +2271,17 @@ export default function App() {
                           <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
                         </div>
 
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${printer.estado_criticidad === "Crítico"
-                          ? "bg-error-container text-error border-error/20 animate-pulse-subtle"
-                          : printer.estado_criticidad === "Advertencia"
-                            ? "bg-tertiary-fixed text-tertiary border-tertiary/20"
-                            : "bg-green-100 text-green-800 border-green-200"
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${
+                          getPrinterStatus(printer) === "Inoperativo"
+                            ? "bg-rose-500/10 text-rose-600 border-rose-500/20 animate-pulse-subtle"
+                            : getPrinterStatus(printer) === "Advertencia"
+                              ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                              : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
                           }`}>
-                          {printer.estado_criticidad === "Crítico"
-                            ? "Crítico"
-                            : printer.estado_criticidad === "Advertencia"
-                              ? "Advertencia"
-                              : "Estable"}
+                          <span className="material-symbols-outlined text-[11px]">
+                            {getPrinterStatus(printer) === "Inoperativo" ? "cancel" : getPrinterStatus(printer) === "Advertencia" ? "warning" : "check_circle"}
+                          </span>
+                          {getPrinterStatus(printer)} {getPrinterStatus(printer) !== "Inoperativo" ? ((printer.ubicacion_entidad || "Hospital") === "Hospital" && !(printer.area_actual || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
                         </span>
                       </div>
 
@@ -2493,9 +2622,15 @@ export default function App() {
                           </span>
                         </div>
                         <div>
-                          <span className="text-[9px] font-bold text-outline block uppercase">Criticidad</span>
-                          <span className={`font-semibold ${log.estado_criticidad === "Crítico" ? "text-error" : log.estado_criticidad === "Advertencia" ? "text-tertiary" : "text-green-600"}`}>
-                            {log.estado_criticidad}
+                          <span className="text-[9px] font-bold text-outline block uppercase">Estado</span>
+                          <span className={`font-semibold ${
+                            (log.estado_funcionamiento || log.estado_criticidad) === "Inoperativo" || (log.estado_funcionamiento || log.estado_criticidad) === "Crítico"
+                              ? "text-rose-600 font-extrabold"
+                              : (log.estado_funcionamiento || log.estado_criticidad) === "Advertencia"
+                                ? "text-amber-600 font-extrabold"
+                                : "text-emerald-600 font-extrabold"
+                          }`}>
+                            {log.estado_funcionamiento || log.estado_criticidad || "Operativo"}
                           </span>
                         </div>
                       </div>
@@ -2640,12 +2775,29 @@ export default function App() {
                 <h2 className="font-headline-lg text-lg text-primary font-bold">
                   {isCreateMode ? "Registrar Nueva Impresora" : "Editar Lectura"}
                 </h2>
-                {!isCreateMode && selectedPrinter && (
-                  <div className="flex gap-2 mt-1 flex-wrap">
-                    <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">S/N: {selectedPrinter.id_serie}</span>
-                    <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">{selectedPrinter.modelo}</span>
-                  </div>
-                )}
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  {!isCreateMode && selectedPrinter && (
+                    <>
+                      <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">S/N: {selectedPrinter.id_serie}</span>
+                      <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">{selectedPrinter.modelo}</span>
+                    </>
+                  )}
+                  {isCreateMode && (
+                    <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">{editModelo}</span>
+                  )}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 ${
+                    editFuncionamiento === "Inoperativo"
+                      ? "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                      : editFuncionamiento === "Advertencia"
+                        ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                        : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                    }`}>
+                    <span className="material-symbols-outlined text-[11px]">
+                      {editFuncionamiento === "Inoperativo" ? "cancel" : editFuncionamiento === "Advertencia" ? "warning" : "check_circle"}
+                    </span>
+                    {editFuncionamiento} {editFuncionamiento !== "Inoperativo" ? ((editUbicacion || "Hospital") === "Hospital" && !(editArea || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
@@ -2781,6 +2933,66 @@ export default function App() {
                 />
               </div>
 
+              {/* Operational Status Override Controls */}
+              <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/30 space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-[11.5px] font-bold text-outline uppercase tracking-wider">
+                    Estado de Funcionamiento
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-primary select-none">
+                    <input
+                      type="checkbox"
+                      checked={editFuncionamientoAuto}
+                      onChange={(e) => setEditFuncionamientoAuto(e.target.checked)}
+                      className="rounded border-outline-variant text-primary focus:ring-primary h-3.5 w-3.5"
+                    />
+                    Auto-calcular
+                  </label>
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={editFuncionamientoAuto}
+                    onClick={() => setEditFuncionamiento("Operativo")}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
+                      editFuncionamiento === "Operativo"
+                        ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-700 font-extrabold"
+                        : "bg-surface text-on-surface-variant border-outline-variant opacity-60"
+                    } ${editFuncionamientoAuto ? "cursor-not-allowed opacity-50 bg-emerald-500/5 border-emerald-500/10 text-emerald-600/70" : "active:scale-[0.98]"}`}
+                  >
+                    <span className="material-symbols-outlined text-[15px]">check_circle</span>
+                    Operativo
+                  </button>
+                  <button
+                    type="button"
+                    disabled={editFuncionamientoAuto}
+                    onClick={() => setEditFuncionamiento("Advertencia")}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
+                      editFuncionamiento === "Advertencia"
+                        ? "bg-amber-500/15 border-amber-500/30 text-amber-700 font-extrabold"
+                        : "bg-surface text-on-surface-variant border-outline-variant opacity-60"
+                    } ${editFuncionamientoAuto ? "cursor-not-allowed opacity-50 bg-amber-500/5 border-amber-500/10 text-amber-600/70" : "active:scale-[0.98]"}`}
+                  >
+                    <span className="material-symbols-outlined text-[15px]">warning</span>
+                    Advertencia
+                  </button>
+                  <button
+                    type="button"
+                    disabled={editFuncionamientoAuto}
+                    onClick={() => setEditFuncionamiento("Inoperativo")}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
+                      editFuncionamiento === "Inoperativo"
+                        ? "bg-rose-500/15 border-rose-500/30 text-rose-700 font-extrabold"
+                        : "bg-surface text-on-surface-variant border-outline-variant opacity-60"
+                    } ${editFuncionamientoAuto ? "cursor-not-allowed opacity-50 bg-rose-500/5 border-rose-500/10 text-rose-600/70" : "active:scale-[0.98]"}`}
+                  >
+                    <span className="material-symbols-outlined text-[15px]">cancel</span>
+                    Inoperativo
+                  </button>
+                </div>
+              </div>
+
               {/* Individual History Timeline in modal */}
               {selectedPrinterHistory.length > 0 && (
                 <div className="pt-4 border-t border-outline-variant/30 space-y-2">
@@ -2801,13 +3013,14 @@ export default function App() {
                                 Manual
                               </span>
                             )}
-                            <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider border ${hist.estado_criticidad === "Crítico"
-                              ? "bg-error-container text-error border-error/20"
-                              : hist.estado_criticidad === "Advertencia"
-                                ? "bg-tertiary-fixed text-tertiary border-tertiary/20"
-                                : "bg-green-100 text-green-800 border-green-200"
+                            <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider border ${
+                              (hist.estado_funcionamiento || hist.estado_criticidad) === "Inoperativo" || (hist.estado_funcionamiento || hist.estado_criticidad) === "Crítico"
+                                ? "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                                : (hist.estado_funcionamiento || hist.estado_criticidad) === "Advertencia"
+                                  ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                  : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
                               }`}>
-                              {hist.estado_criticidad || "Estable"}
+                              {hist.estado_funcionamiento || hist.estado_criticidad || "Operativo"}
                             </span>
                             <span className="text-[10px] text-outline font-medium">
                               {hist.tipo_actualizacion || "Manual"}
@@ -2989,13 +3202,13 @@ export default function App() {
                               <div>U: {eq.unidad_imagen_nivel}%</div>
                               <div>K: {eq.mantenimiento_kit_nivel ?? 100}%</div>
                             </div>
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase shrink-0 ${eq.estado_criticidad === "Crítico"
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase shrink-0 ${(eq.estado_funcionamiento || eq.estado_criticidad) === "Inoperativo" || (eq.estado_funcionamiento || eq.estado_criticidad) === "Crítico"
                               ? "bg-error-container text-error border-error/20"
-                              : eq.estado_criticidad === "Advertencia"
+                              : (eq.estado_funcionamiento || eq.estado_criticidad) === "Advertencia"
                                 ? "bg-tertiary-fixed text-tertiary border-tertiary/20"
                                 : "bg-green-100 text-green-800 border-green-200"
                               }`}>
-                              {eq.estado_criticidad}
+                              {eq.estado_funcionamiento || eq.estado_criticidad || "Operativo"} {((eq.estado_funcionamiento || eq.estado_criticidad) !== "Inoperativo" && (eq.estado_funcionamiento || eq.estado_criticidad) !== "Crítico") ? ((eq.ubicacion_entidad || "Hospital") === "Hospital" && !(eq.area_actual || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
                             </span>
                           </div>
                         </div>

@@ -205,11 +205,45 @@ export async function seedPrintersIfEmpty(db) {
 
       const prediction = calcularFechasPredictivas(toner, unit, maint);
 
+      // Determine unified functioning status (Operativo, Inoperativo, Advertencia)
+      const cleanArea = (printer.area_actual || "").toLowerCase().trim();
+      const cleanObs = (printer.observaciones || "").toLowerCase().trim();
+      const isSoporte = cleanArea.includes("soporte");
+      
+      const levelIsZero = toner === 0 || unit === 0 || maint === 0;
+      const hasSeriousObs = cleanObs.includes("inoperativa") || 
+                            cleanObs.includes("inoperativo") || 
+                            cleanObs.includes("malograda") || 
+                            cleanObs.includes("malogrado") || 
+                            cleanObs.includes("dañada") || 
+                            cleanObs.includes("dañado") || 
+                            cleanObs.includes("baja") || 
+                            cleanObs.includes("mal estado") || 
+                            cleanObs.includes("inoperable") ||
+                            cleanObs.includes("falta") ||
+                            cleanObs.includes("error");
+
+      let estadoFuncionamiento = "Operativo";
+
+      if (hasSeriousObs || levelIsZero) {
+        estadoFuncionamiento = "Inoperativo";
+      } else {
+        const hasWarningObs = cleanObs.includes("traba") ||
+                              cleanObs.includes("atasco") ||
+                              cleanObs.includes("mantenimiento") ||
+                              cleanObs.includes("limpieza") ||
+                              cleanObs.includes("detalles");
+        const levelIsLow = toner <= 15 || unit <= 15 || maint <= 15;
+        if (levelIsLow || hasWarningObs) {
+          estadoFuncionamiento = "Advertencia";
+        }
+      }
+
       const printerDoc = {
         modelo: printer.modelo,
         area_actual: printer.area_actual,
         codigo_caso_cas: printer.codigo_caso_cas || "",
-        estado_criticidad: crit,
+        estado_funcionamiento: estadoFuncionamiento,
         observaciones: printer.observaciones || "",
         ubicacion_entidad: ubicacion, // 'Hospital' or 'MUR'
         consumibles: {
