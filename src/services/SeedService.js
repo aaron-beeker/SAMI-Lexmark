@@ -246,6 +246,7 @@ export async function seedPrintersIfEmpty(db) {
         estado_funcionamiento: estadoFuncionamiento,
         observaciones: printer.observaciones || "",
         ubicacion_entidad: ubicacion, // 'Hospital' or 'MUR'
+        ip: `10.10.20.${10 + index}`,
         consumibles: {
           toner_nivel: toner,
           unidad_imagen_nivel: unit,

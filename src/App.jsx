@@ -23,6 +23,19 @@ export default function App() {
   // Navigation & UI tabs
   const [currentTab, setCurrentTab] = useState("dashboard"); // dashboard, inventario, chat, historial, settings
 
+  // Inline Row Editing State for Desktop Excel-style Table
+  const [editingRowId, setEditingRowId] = useState(null);
+  const [editingRowData, setEditingRowData] = useState({});
+
+  // Clipboard copy state for Serial Numbers
+  const [copiedSerialId, setCopiedSerialId] = useState(null);
+
+  const handleCopySerial = (serial) => {
+    navigator.clipboard.writeText(serial);
+    setCopiedSerialId(serial);
+    setTimeout(() => setCopiedSerialId(null), 2000);
+  };
+
   // Printers Firestore State
   const [printers, setPrinters] = useState([]);
   const [loadingPrinters, setLoadingPrinters] = useState(true);
@@ -46,6 +59,7 @@ export default function App() {
   const [editCasCode, setEditCasCode] = useState("");
   const [editUbicacion, setEditUbicacion] = useState("Hospital");
   const [editFuncionamiento, setEditFuncionamiento] = useState("Operativo");
+  const [editIp, setEditIp] = useState("");
   const [editFuncionamientoAuto, setEditFuncionamientoAuto] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [savingStock, setSavingStock] = useState(false);
@@ -64,16 +78,22 @@ export default function App() {
     {
       id: "welcome",
       sender: "ai",
-      text: "¡Hola! Soy SAMI-Lexmark AI. Puedes enviarme un reporte de texto o subir una foto del panel de control de una impresora (mostrando los niveles de tóner o unidad de imagen) y actualizaré la base de datos de Firestore automáticamente.",
+      text: "👋 ¡Hola! Soy tu asistente de impresoras.\n\nPuedes enviarme:\n• 📷 Fotos del panel de control de una impresora\n• 📄 Archivos PDF con reportes\n• 📝 Texto con los niveles de tóner\n\nAnalizo la información y actualizo los registros automáticamente. ¡Puedes adjuntar varios archivos a la vez antes de enviar!",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [chatInput, setChatInput] = useState("");
-  const [chatImage, setChatImage] = useState(null); // { base64, mimeType, preview }
+  // Multiple pending attachments queue: [{ base64, mimeType, preview, name, type }]
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  // Confirmation modal state
+  const [showChatConfirm, setShowChatConfirm] = useState(false);
+  const [pendingSendPayload, setPendingSendPayload] = useState(null);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const chatEndRef = useRef(null);
+  const chatTextareaRef = useRef(null);
 
   // Excel Import State
   const [excelData, setExcelData] = useState(null); // { equipos_normalizados, reporte_resumen }
@@ -289,13 +309,16 @@ export default function App() {
   const kpiInoperativas = printers.filter(p => getPrinterStatus(p) === "Inoperativo").length;
 
   // Physical Location & Service breakdowns
+  const isInSoporte = (p) => (p.area_actual || "").toLowerCase().includes("soporte");
   const kpiHospitalTotal = printers.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital").length;
-  const kpiHospitalEnServicio = printers.filter(p => 
-    (p.ubicacion_entidad || "Hospital") === "Hospital" && 
-    p.area_actual !== "Soporte" && 
+  const kpiHospitalEnServicio = printers.filter(p =>
+    (p.ubicacion_entidad || "Hospital") === "Hospital" &&
+    !isInSoporte(p) &&
     getPrinterStatus(p) !== "Inoperativo"
   ).length;
-  const kpiHospitalEnSoporte = printers.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && p.area_actual === "Soporte").length;
+  const kpiHospitalEnSoporte = printers.filter(p =>
+    (p.ubicacion_entidad || "Hospital") === "Hospital" && isInSoporte(p)
+  ).length;
   const kpiMurTotal = printers.filter(p => p.ubicacion_entidad === "MUR").length;
 
   // Save Settings API Key
@@ -323,6 +346,7 @@ export default function App() {
     setEditObservaciones(obsVal);
     setEditCasCode(printer.codigo_caso_cas || "");
     setEditUbicacion(printer.ubicacion_entidad || "Hospital");
+    setEditIp(printer.ip || "");
 
     // Initialize functioning status and check if it matches auto-calculation
     const storedStatus = printer.estado_funcionamiento || getPrinterStatus(printer);
@@ -347,6 +371,7 @@ export default function App() {
     setEditObservaciones("");
     setEditCasCode("");
     setEditUbicacion("Hospital");
+    setEditIp("");
     setEditFuncionamiento("Operativo");
     setEditFuncionamientoAuto(true);
     setSelectedPrinterHistory([]);
@@ -399,6 +424,7 @@ export default function App() {
           modelo: editModelo,
           area_actual: editArea,
           codigo_caso_cas: editCasCode,
+          ip: editIp,
           estado_funcionamiento: computedFuncionamiento,
           estado_funcionamiento_manual: !editFuncionamientoAuto,
           observaciones: editObservaciones || "",
@@ -438,6 +464,7 @@ export default function App() {
           modelo: editModelo,
           area_actual: editArea,
           codigo_caso_cas: editCasCode,
+          ip: editIp,
           estado_funcionamiento: computedFuncionamiento,
           estado_funcionamiento_manual: !editFuncionamientoAuto,
           observaciones: editObservaciones,
@@ -475,6 +502,7 @@ export default function App() {
         id_serie: cleanId,
         modelo: editModelo,
         area_actual: editArea,
+        ip: editIp,
         toner_nivel: Number(editToner),
         unidad_imagen_nivel: Number(editUnit),
         mantenimiento_kit_nivel: Number(editMantenimiento),
@@ -491,6 +519,124 @@ export default function App() {
       alert("Error al guardar cambios: " + error.message);
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const handleRowDataChange = (field, value) => {
+    setEditingRowData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleRowNestedDataChange = (parentField, childField, value) => {
+    setEditingRowData(prev => ({
+      ...prev,
+      [parentField]: {
+        ...prev[parentField],
+        [childField]: value
+      }
+    }));
+  };
+
+  const handleStartRowEdit = (printer) => {
+    setEditingRowId(printer.id_serie);
+    setEditingRowData({ ...printer });
+  };
+
+  const handleSaveRowEdit = async (rowId) => {
+    if (!editingRowData) return;
+    try {
+      const tonerVal = Number(editingRowData.consumibles?.toner_nivel ?? 100);
+      const unitVal = Number(editingRowData.consumibles?.unidad_imagen_nivel ?? 100);
+      const maintVal = Number(editingRowData.consumibles?.mantenimiento_kit_nivel ?? 100);
+      const areaVal = editingRowData.area_actual || "Soporte";
+      const obsVal = editingRowData.observaciones || "";
+      const ipVal = editingRowData.ip || "";
+      const ubicacionVal = editingRowData.ubicacion_entidad || "Hospital";
+
+      const computedFuncionamiento = calculatePrinterStatus(
+        areaVal,
+        tonerVal,
+        unitVal,
+        maintVal,
+        obsVal,
+        ubicacionVal
+      );
+      
+      const prediction = calcularFechasPredictivas(tonerVal, unitVal, maintVal);
+
+      const docRef = doc(
+        db,
+        "artifacts",
+        "sami-lexmark",
+        "public",
+        "data",
+        "impresoras",
+        rowId
+      );
+
+      const updateData = {
+        modelo: editingRowData.modelo || "MX431ADN",
+        area_actual: areaVal,
+        ip: ipVal,
+        observaciones: obsVal,
+        codigo_caso_cas: editingRowData.codigo_caso_cas || "",
+        estado_funcionamiento: computedFuncionamiento,
+        "consumibles.toner_nivel": tonerVal,
+        "consumibles.unidad_imagen_nivel": unitVal,
+        "consumibles.mantenimiento_kit_nivel": maintVal,
+        "consumibles.ultima_lectura": new Date(),
+        prediccion: prediction
+      };
+
+      await updateDoc(docRef, updateData);
+
+      // Save to History subcollection
+      const historyColRef = collection(docRef, "historial_lecturas");
+      await addDoc(historyColRef, {
+        toner_nivel: tonerVal,
+        unidad_imagen_nivel: unitVal,
+        mantenimiento_kit_nivel: maintVal,
+        estado_funcionamiento: computedFuncionamiento,
+        observaciones: obsVal,
+        codigo_caso_cas: editingRowData.codigo_caso_cas || "",
+        area_actual: areaVal,
+        fecha_lectura: new Date(),
+        tipo_actualizacion: "Edición Rápida Tabla"
+      });
+
+      // Save to General History
+      const generalHistoryColRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "historial_general");
+      await addDoc(generalHistoryColRef, {
+        tipo: "impresora",
+        id_serie: rowId,
+        modelo: editingRowData.modelo || "MX431ADN",
+        area_actual: areaVal,
+        toner_nivel: tonerVal,
+        unidad_imagen_nivel: unitVal,
+        mantenimiento_kit_nivel: maintVal,
+        estado_funcionamiento: computedFuncionamiento,
+        observaciones: obsVal,
+        codigo_caso_cas: editingRowData.codigo_caso_cas || "",
+        tipo_actualizacion: "Edición Rápida Tabla",
+        timestamp: new Date()
+      });
+
+      setEditingRowId(null);
+      setEditingRowData({});
+    } catch (error) {
+      console.error("Error saving row inline edit:", error);
+      alert("Error al guardar cambios: " + error.message);
+    }
+  };
+
+  const handleRowKeyDown = (e, rowId) => {
+    if (e.key === "Enter") {
+      handleSaveRowEdit(rowId);
+    } else if (e.key === "Escape") {
+      setEditingRowId(null);
+      setEditingRowData({});
     }
   };
   
@@ -1101,60 +1247,107 @@ export default function App() {
   };
 
   // Handle image upload & base64 conversion
+  // Add files (images or PDFs) to pending attachments queue
+  const addFilesToQueue = (files) => {
+    Array.from(files).forEach(file => {
+      const isImage = file.type.startsWith("image/");
+      const isPdf = file.type === "application/pdf";
+      if (!isImage && !isPdf) return;
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPendingAttachments(prev => [
+          ...prev,
+          {
+            base64: reader.result.split(",")[1],
+            mimeType: file.type,
+            preview: isImage ? reader.result : null,
+            name: file.name,
+            type: isImage ? "image" : "pdf"
+          }
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setChatImage({
-        base64: reader.result.split(",")[1], // Extract base64 content
-        mimeType: file.type,
-        preview: reader.result
-      });
-    };
-    reader.readAsDataURL(file);
+    if (e.target.files?.length) addFilesToQueue(e.target.files);
+    e.target.value = "";
   };
 
-  const removeAttachedImage = () => {
-    setChatImage(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  const handlePdfChange = (e) => {
+    if (e.target.files?.length) addFilesToQueue(e.target.files);
+    e.target.value = "";
   };
 
-  // Submit Chat Message to Gemini
-  const handleSendChatMessage = async (e) => {
+  const removeAttachment = (index) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Ctrl+V paste from clipboard
+  const handleChatPaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageItems = Array.from(items).filter(i => i.type.startsWith("image/"));
+    if (imageItems.length === 0) return;
     e.preventDefault();
-    if ((!chatInput.trim() && !chatImage) || isChatLoading) return;
+    imageItems.forEach(item => {
+      const file = item.getAsFile();
+      if (file) addFilesToQueue([file]);
+    });
+  };
 
-    const userMsgText = chatInput;
-    const attachedImage = chatImage;
+  // Show confirmation modal before sending
+  const handleSendChatMessage = (e) => {
+    e.preventDefault();
+    if ((!chatInput.trim() && pendingAttachments.length === 0) || isChatLoading) return;
 
-    // Clear inputs immediately for responsiveness
+    // Build payload and show confirmation
+    setPendingSendPayload({ text: chatInput, attachments: [...pendingAttachments] });
+    setShowChatConfirm(true);
+  };
+
+  // Actually send after user confirms
+  const handleConfirmSend = async () => {
+    if (!pendingSendPayload) return;
+    const { text: userMsgText, attachments } = pendingSendPayload;
+
+    setShowChatConfirm(false);
+    setPendingSendPayload(null);
+
+    // Clear inputs
     setChatInput("");
-    setChatImage(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setPendingAttachments([]);
 
-    // Add user message to chat list
+    // Add user message to chat
     const userMsgId = Date.now().toString();
+    const previewImages = attachments.filter(a => a.type === "image").map(a => a.preview);
     setChatMessages(prev => [
       ...prev,
       {
         id: userMsgId,
         sender: "user",
         text: userMsgText,
-        image: attachedImage ? attachedImage.preview : null,
+        images: previewImages,
+        files: attachments.filter(a => a.type === "pdf").map(a => a.name),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }
     ]);
 
     setIsChatLoading(true);
 
+    // Use first image for Gemini (API limitation: 1 image per call currently)
+    const firstImage = attachments.find(a => a.type === "image");
+    const firstPdf = attachments.find(a => a.type === "pdf");
+    const activeAttachment = firstImage || firstPdf;
+
     try {
       // Call Gemini Service
       const result = await analizarEvidenciaSuministros(
         userMsgText,
-        attachedImage ? attachedImage.base64 : null,
-        attachedImage ? attachedImage.mimeType : null
+        activeAttachment ? activeAttachment.base64 : null,
+        activeAttachment ? activeAttachment.mimeType : null
       );
 
       console.log("Gemini parse result:", result);
@@ -1654,14 +1847,177 @@ export default function App() {
     }
   };
 
-  // Filter printers list for Search and Category selection
-  const filteredPrinters = printers.filter(p => {
-    const matchesSearch = p.id_serie.toLowerCase().includes(searchText.toLowerCase()) ||
-      p.modelo.toLowerCase().includes(searchText.toLowerCase()) ||
-      p.area_actual.toLowerCase().includes(searchText.toLowerCase());
+  // ── Text helper: safe include with false-positive sanitization ──────────────
+  // Prevents "operativo" from matching "inoperativo", "conectado" from matching
+  // "desconectado", and "servicio" from matching "sin servicio".
+  const textIncludesTerm = (text, term) => {
+    if (!text || !term) return false;
+    let cleanText = (text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const cleanTerm = term.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-    if (filterCriticidad === "all") return matchesSearch;
-    return matchesSearch && getPrinterStatus(p) === filterCriticidad;
+    // Sanitize conflicting substrings
+    if (["operativo","operativa","operativos","operativas"].includes(cleanTerm)) {
+      cleanText = cleanText.replace(/inoperativos/g,"").replace(/inoperativas/g,"")
+                           .replace(/inoperativo/g,"").replace(/inoperativa/g,"");
+    }
+    if (["conectado","conectada","conectados","conectadas"].includes(cleanTerm)) {
+      cleanText = cleanText.replace(/desconectados/g,"").replace(/desconectadas/g,"")
+                           .replace(/desconectado/g,"").replace(/desconectada/g,"");
+    }
+    if (["servicio","servicios","en servicio","en servicios"].includes(cleanTerm)) {
+      cleanText = cleanText.replace(/sin servicios/g,"").replace(/sin servicio/g,"");
+    }
+
+    return cleanText.includes(cleanTerm);
+  };
+
+  const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+  // Field-specific matchers
+  const matchesSerialField = (p, t) => norm(p.id_serie).includes(norm(t));
+
+  const matchesModelField = (p, t) =>
+    textIncludesTerm(p.modelo, t);
+
+  const matchesLocationField = (p, t) =>
+    textIncludesTerm(p.area_actual, t) || textIncludesTerm(p.ubicacion_entidad, t);
+
+  const matchesObsOrCaseField = (p, t) =>
+    textIncludesTerm(p.observaciones, t) || textIncludesTerm(p.codigo_caso_cas, t);
+
+  const matchesConnectionField = (p, t) => {
+    const nt = norm(t);
+    const ip = norm(p.ip || "");
+    const hasIp = ip !== "";
+    const isUsb = ip === "usb";
+    const isNetIp = hasIp && !isUsb;
+
+    if (["conectado","conectada","conectados","conectadas","red","ip"].includes(nt)) return hasIp;
+    if (["desconectado","desconectada","desconectados","sin red","sin ip","sin conexion"].includes(nt)) return !hasIp;
+    if (nt === "usb") return isUsb;
+    // Partial IP match
+    if (isNetIp && ip.includes(nt)) return true;
+    return false;
+  };
+
+  const matchesStatusField = (p, t) => {
+    const nt = norm(t);
+    const status = getPrinterStatus(p);
+    const ns = norm(status);
+    const operativoKw   = ["operativo","operativa","operativos","operativas","operando","funcionando","ok","activo","activa"];
+    const advertenciaKw = ["advertencia","advertencias","alerta","alertas","critico","critica","criticos","criticas"];
+    const inoperativoKw = ["inoperativo","inoperativa","inoperativos","inoperativas","inoperante","inoperantes","falla","fallas","averia","averias","malogrado","malograda","dañada","dañado"];
+
+    if (operativoKw.includes(nt))   return ns === "operativo";
+    if (advertenciaKw.includes(nt)) return ns === "advertencia";
+    if (inoperativoKw.includes(nt)) return ns === "inoperativo";
+    return false;
+  };
+
+  const matchesServiceField = (p, t) => {
+    const nt = norm(t);
+    // En servicio = asignada a cualquier área que NO sea Soporte y que NO sea MUR
+    const isEnServicio = !(p.area_actual || "").toLowerCase().includes("soporte") &&
+                         (p.ubicacion_entidad || "Hospital").toUpperCase() !== "MUR";
+
+    if (["servicio","servicios","en servicio","en servicios"].includes(nt)) return isEnServicio;
+    if (["sin servicio","sin servicios"].includes(nt)) return !isEnServicio;
+    return false;
+  };
+
+  // Check if a single term matches a printer (tries all field matchers)
+  const termMatchesPrinter = (term, p) => {
+    const nt = norm(term);
+
+    // ── Semantic keyword short-circuit ─────────────────────────────────────────
+    // When the term is a reserved semantic keyword, ONLY use its specific matcher.
+    // This prevents false positives from text found in observaciones/cas fields.
+    // e.g., "servicio" must NOT match a printer whose obs says "fuera de servicio".
+    const serviceKw = ["servicio","servicios","en servicio","en servicios","sin servicio","sin servicios"];
+    const statusKw  = ["operativo","operativa","operativos","operativas","operando","funcionando","ok","activo","activa",
+                       "advertencia","advertencias","alerta","alertas","critico","critica","criticos","criticas",
+                       "inoperativo","inoperativa","inoperativos","inoperativas","inoperante","inoperantes",
+                       "falla","fallas","averia","averias","malogrado","malograda"];
+    const connKw    = ["conectado","conectada","conectados","conectadas","desconectado","desconectada","desconectados",
+                       "sin red","sin ip","sin conexion","usb","red","ip"];
+
+    if (serviceKw.includes(nt)) return matchesServiceField(p, term);
+    if (statusKw.includes(nt))  return matchesStatusField(p, term);
+    if (connKw.includes(nt))    return matchesConnectionField(p, term);
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // General text search across all fields
+    return matchesSerialField(p, term)    ||
+           matchesModelField(p, term)     ||
+           matchesLocationField(p, term)  ||
+           matchesObsOrCaseField(p, term) ||
+           matchesConnectionField(p, term)||
+           matchesStatusField(p, term)    ||
+           matchesServiceField(p, term);
+  };
+
+  // ── filteredPrinters ─────────────────────────────────────────────────────────
+  // & is SMART: OR within same category, AND across different categories.
+  //
+  // soporte & mur           → same category (location) → OR → shows both areas
+  // desconectado & soporte  → diff. categories (conn + location) → AND → intersection
+  // operativa & !soporte    → status=operativa AND NOT in Soporte
+  // soporte & mur & !inop.  → (soporte OR mur) AND NOT inoperativa
+  // ─────────────────────────────────────────────────────────────────────────────
+  const filteredPrinters = printers.filter(p => {
+    // Status tab filter
+    if (filterCriticidad !== "all" && getPrinterStatus(p) !== filterCriticidad) return false;
+
+    const raw = searchText.trim();
+    if (!raw) return true;
+
+    const groups = raw.split(/\s*&\s*/i).map(s => s.trim()).filter(Boolean);
+
+    const positiveGroups = groups.filter(g => !g.startsWith("!"));
+    const negativeGroups = groups
+      .filter(g => g.startsWith("!"))
+      .map(g => g.slice(1).trim())
+      .filter(Boolean);
+
+    // 1. Negations: always exclude if any negative term matches
+    if (negativeGroups.some(neg => termMatchesPrinter(neg, p))) return false;
+
+    if (positiveGroups.length === 0) return true;
+
+    // 2. Classify positive terms by category
+    const SERVICE_KW = ["servicio","servicios","en servicio","en servicios","sin servicio","sin servicios"];
+    const STATUS_KW  = ["operativo","operativa","operativos","operativas","operando","funcionando","ok","activo","activa",
+                        "advertencia","advertencias","alerta","alertas","critico","critica","criticos","criticas",
+                        "inoperativo","inoperativa","inoperativos","inoperativas","inoperante","inoperantes",
+                        "falla","fallas","averia","averias","malogrado","malograda"];
+    const CONN_KW    = ["conectado","conectada","conectados","conectadas","desconectado","desconectada","desconectados",
+                        "sin red","sin ip","sin conexion","usb","red","ip"];
+
+    const categorized = { status: [], connection: [], service: [], location: [], generic: [] };
+
+    positiveGroups.forEach(term => {
+      const nt = norm(term);
+      if (SERVICE_KW.includes(nt))       categorized.service.push(term);
+      else if (STATUS_KW.includes(nt))   categorized.status.push(term);
+      else if (CONN_KW.includes(nt))     categorized.connection.push(term);
+      else if (printers.some(q => matchesLocationField(q, term))) categorized.location.push(term);
+      else                               categorized.generic.push(term);
+    });
+
+    // 3. AND across categories: each non-empty category must have at least one match (OR within)
+    for (const terms of Object.values(categorized)) {
+      if (terms.length === 0) continue;
+      if (!terms.some(term => termMatchesPrinter(term, p))) return false;
+    }
+
+    return true;
+  }).sort((a, b) => {
+    const statusA = getPrinterStatus(a);
+    const statusB = getPrinterStatus(b);
+    if (statusA === "Inoperativo" && statusB !== "Inoperativo") return 1;
+    if (statusA !== "Inoperativo" && statusB === "Inoperativo") return -1;
+    return (a.area_actual || "").localeCompare(b.area_actual || "", "es", { sensitivity: "base" })
+      || (a.id_serie || "").localeCompare(b.id_serie || "");
   });
 
   return (
@@ -1669,10 +2025,42 @@ export default function App() {
 
       {/* TopAppBar */}
       <header className="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-surface/90 backdrop-blur-md border-b border-outline-variant shadow-sm">
-        <div className="flex items-center gap-3 cursor-pointer active:opacity-70" onClick={() => setCurrentTab("dashboard")}>
-          <span className="material-symbols-outlined text-primary text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>print</span>
-          <h1 className="font-headline-lg-mobile text-xl font-extrabold text-primary tracking-tight">SAMI-Lexmark</h1>
+        <div className="flex items-center gap-2 cursor-pointer active:opacity-70" onClick={() => setCurrentTab("dashboard")}>
+          <img 
+            src="/mur_tecnologa_logo.jpg" 
+            alt="MUR Tecnología" 
+            className="h-7 w-auto object-contain mix-blend-multiply" 
+          />
+          <div className="h-4 w-[1px] bg-outline-variant/80 mx-1"></div>
+          <h1 className="font-headline-lg-mobile text-xs font-black text-primary tracking-widest uppercase">SAMI-Lexmark</h1>
         </div>
+
+        {/* Desktop Navigation Links */}
+        <nav className="hidden md:flex items-center gap-1 bg-surface-container border border-outline-variant rounded-full p-1 shadow-sm">
+          {[
+            { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+            { id: "inventario", label: "Inventario", icon: "inventory_2" },
+            { id: "chat", label: "Gemini AI", icon: "smart_toy" },
+            { id: "historial", label: "Historial", icon: "history" }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                if (tab.id === "dashboard") setFilterCriticidad("all");
+                setCurrentTab(tab.id);
+              }}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 ${
+                currentTab === tab.id
+                  ? "bg-primary text-on-primary shadow"
+                  : "text-on-surface-variant hover:bg-surface-container-high"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-primary bg-primary-fixed/50 px-2.5 py-1 rounded-full border border-primary/15">
             <span className="material-symbols-outlined text-sm animate-pulse-subtle">cloud_done</span>
@@ -1688,13 +2076,13 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="pt-20 px-4 max-w-lg mx-auto w-full flex-grow space-y-6">
+      <main className="pt-20 px-4 md:px-8 max-w-lg md:max-w-7xl mx-auto w-full flex-grow space-y-6 pb-6">
 
         {/* VIEW: DASHBOARD */}
         {currentTab === "dashboard" && (
           <div className="space-y-6 animate-fade-in">
             {/* KPI Cards Grid */}
-            <section className="grid grid-cols-2 gap-4">
+            <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div
                 onClick={() => {
                   setFilterCriticidad("all");
@@ -1755,348 +2143,357 @@ export default function App() {
               </div>
             </section>
 
-            {/* Ubicación y Estados de Servicio Grid */}
-            <section className="bg-surface border border-outline-variant rounded-2xl p-4 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold text-outline uppercase tracking-wider flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm">location_on</span>
-                Ubicación Física y Estado de Servicio
-              </h3>
+            {/* Desktop Two-Column Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column (Main Stats & Alertas) */}
+              <div className="lg:col-span-7 space-y-6">
+                {/* Ubicación y Estados de Servicio Grid */}
+                <section className="bg-surface border border-outline-variant rounded-2xl p-4 shadow-sm space-y-3">
+                  <h3 className="text-xs font-bold text-outline uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm">location_on</span>
+                    Ubicación Física y Estado de Servicio
+                  </h3>
 
-              <div className="grid grid-cols-2 gap-3">
-                {/* Hospital Card */}
-                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-on-surface flex items-center gap-1">
-                      <span className="material-symbols-outlined text-primary text-sm">local_hospital</span>
-                      Hospital
-                    </span>
-                    <span className="text-lg font-black text-primary">{loadingPrinters ? "..." : kpiHospitalTotal}</span>
-                  </div>
-                  <div className="space-y-1.5 pt-2 border-t border-outline-variant/20">
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-on-surface-variant flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                        En Servicio:
-                      </span>
-                      <span className="font-bold">{loadingPrinters ? "..." : kpiHospitalEnServicio}</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Hospital Card */}
+                    <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-on-surface flex items-center gap-1">
+                          <span className="material-symbols-outlined text-primary text-sm">local_hospital</span>
+                          Hospital
+                        </span>
+                        <span className="text-lg font-black text-primary">{loadingPrinters ? "..." : kpiHospitalTotal}</span>
+                      </div>
+                      <div className="space-y-1.5 pt-2 border-t border-outline-variant/20">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-on-surface-variant flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                            En Servicio:
+                          </span>
+                          <span className="font-bold">{loadingPrinters ? "..." : kpiHospitalEnServicio}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-on-surface-variant flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse-subtle"></span>
+                            En Soporte:
+                          </span>
+                          <span className="font-bold">{loadingPrinters ? "..." : kpiHospitalEnSoporte}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-on-surface-variant flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse-subtle"></span>
-                        En Soporte:
-                      </span>
-                      <span className="font-bold">{loadingPrinters ? "..." : kpiHospitalEnSoporte}</span>
+
+                    {/* MUR Card */}
+                    <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-on-surface flex items-center gap-1">
+                          <span className="material-symbols-outlined text-secondary text-sm">corporate_fare</span>
+                          MUR
+                        </span>
+                        <span className="text-lg font-black text-secondary">{loadingPrinters ? "..." : kpiMurTotal}</span>
+                      </div>
+                      <p className="text-[10px] text-outline pt-2 border-t border-outline-variant/20 leading-tight">
+                        Equipos en taller/soporte externo de MUR.
+                      </p>
                     </div>
                   </div>
-                </div>
+                </section>
 
-                {/* MUR Card */}
-                <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-on-surface flex items-center gap-1">
-                      <span className="material-symbols-outlined text-secondary text-sm">corporate_fare</span>
-                      MUR
-                    </span>
-                    <span className="text-lg font-black text-secondary">{loadingPrinters ? "..." : kpiMurTotal}</span>
+                {/* Quick Summary Section (Alertas) */}
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-headline-md text-lg text-on-background font-bold">Resumen de Alertas</h2>
+                    <button
+                      onClick={() => {
+                        setFilterCriticidad("all");
+                        setCurrentTab("inventario");
+                      }}
+                      className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                    >
+                      Ver todo
+                      <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                    </button>
                   </div>
-                  <p className="text-[10px] text-outline pt-2 border-t border-outline-variant/20 leading-tight">
-                    Equipos en taller/soporte externo de MUR.
-                  </p>
-                </div>
-              </div>
-            </section>
 
-            {/* Quick Summary Section */}
-            <section className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-headline-md text-lg text-on-background font-bold">Resumen de Alertas</h2>
-                <button
-                  onClick={() => {
-                    setFilterCriticidad("all");
-                    setCurrentTab("inventario");
-                  }}
-                  className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
-                >
-                  Ver todo
-                  <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                </button>
-              </div>
+                  <div className="space-y-3">
+                    {loadingPrinters ? (
+                      <div className="p-8 text-center text-outline-variant">Cargando datos...</div>
+                    ) : printers.filter(p => getPrinterStatus(p) !== "Operativo").length === 0 ? (
+                      <div className="p-8 text-center bg-surface-container-lowest border border-outline-variant rounded-2xl text-on-surface-variant flex flex-col items-center gap-2">
+                        <span className="material-symbols-outlined text-green-500 text-3xl">check_circle</span>
+                        <p className="font-semibold">Todos los equipos están operativos</p>
+                      </div>
+                    ) : (
+                      printers
+                        .filter(p => getPrinterStatus(p) !== "Operativo")
+                        .slice(0, 3)
+                        .map((printer) => {
+                          const status = getPrinterStatus(printer);
+                          return (
+                            <div
+                              key={printer.id_serie}
+                              onClick={() => handleOpenEditModal(printer)}
+                              className={`p-4 border rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98] ${status === "Inoperativo"
+                                ? "bg-rose-500/5 border-rose-500/20"
+                                : "bg-surface-container-lowest border-outline-variant"
+                                }`}
+                            >
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <div className="flex gap-1.5 flex-wrap items-center">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${status === "Inoperativo"
+                                      ? "bg-rose-500/10 text-rose-700"
+                                      : "bg-surface-variant text-outline"
+                                      }`}>
+                                      S/N: {printer.id_serie}
+                                    </span>
+                                    {printer.codigo_caso_cas && (
+                                      <span className="text-[10px] font-bold text-primary px-2 py-0.5 bg-primary-fixed rounded-md max-w-[120px] truncate" title={printer.codigo_caso_cas}>
+                                        CAS: {printer.codigo_caso_cas}
+                                      </span>
+                                    )}
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${(printer.ubicacion_entidad || "Hospital") === "Hospital"
+                                      ? "bg-primary-fixed/30 text-primary border border-primary/10"
+                                      : "bg-secondary-fixed/30 text-secondary border border-secondary/10"
+                                      }`}>
+                                      <span className="material-symbols-outlined text-[11px]">
+                                        {(printer.ubicacion_entidad || "Hospital") === "Hospital" ? "local_hospital" : "corporate_fare"}
+                                      </span>
+                                      {(printer.ubicacion_entidad || "Hospital") === "Hospital"
+                                        ? `Hospital (${(printer.area_actual || "").toLowerCase().includes("soporte") ? "En Soporte" : "En Servicio"})`
+                                        : "MUR"
+                                      }
+                                    </span>
+                                  </div>
+                                  <h3 className="font-bold text-base mt-1 text-on-background">{printer.modelo}</h3>
+                                  <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
+                                </div>
 
-              <div className="space-y-3">
-                {loadingPrinters ? (
-                  <div className="p-8 text-center text-outline-variant">Cargando datos...</div>
-                ) : printers.filter(p => getPrinterStatus(p) !== "Operativo").length === 0 ? (
-                  <div className="p-8 text-center bg-surface-container-lowest border border-outline-variant rounded-2xl text-on-surface-variant flex flex-col items-center gap-2">
-                    <span className="material-symbols-outlined text-green-500 text-3xl">check_circle</span>
-                    <p className="font-semibold">Todos los equipos están operativos</p>
-                  </div>
-                ) : (
-                  printers
-                    .filter(p => getPrinterStatus(p) !== "Operativo")
-                    .slice(0, 3)
-                    .map((printer) => {
-                      const status = getPrinterStatus(printer);
-                      return (
-                        <div
-                          key={printer.id_serie}
-                          onClick={() => handleOpenEditModal(printer)}
-                          className={`p-4 border rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98] ${status === "Inoperativo"
-                            ? "bg-rose-500/5 border-rose-500/20"
-                            : "bg-surface-container-lowest border-outline-variant"
-                            }`}
-                        >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <div className="flex gap-1.5 flex-wrap items-center">
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${status === "Inoperativo"
-                                  ? "bg-rose-500/10 text-rose-700"
-                                  : "bg-surface-variant text-outline"
-                                  }`}>
-                                  S/N: {printer.id_serie}
-                                </span>
-                                {printer.codigo_caso_cas && (
-                                  <span className="text-[10px] font-bold text-primary px-2 py-0.5 bg-primary-fixed rounded-md max-w-[120px] truncate" title={printer.codigo_caso_cas}>
-                                    CAS: {printer.codigo_caso_cas}
-                                  </span>
-                                )}
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${(printer.ubicacion_entidad || "Hospital") === "Hospital"
-                                  ? "bg-primary-fixed/30 text-primary border border-primary/10"
-                                  : "bg-secondary-fixed/30 text-secondary border border-secondary/10"
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${status === "Inoperativo"
+                                  ? "bg-rose-500/10 text-rose-600 border-rose-500/20 animate-pulse-subtle"
+                                  : "bg-amber-500/10 text-amber-600 border-amber-500/20"
                                   }`}>
                                   <span className="material-symbols-outlined text-[11px]">
-                                    {(printer.ubicacion_entidad || "Hospital") === "Hospital" ? "local_hospital" : "corporate_fare"}
+                                    {status === "Inoperativo" ? "cancel" : "warning"}
                                   </span>
-                                  {(printer.ubicacion_entidad || "Hospital") === "Hospital"
-                                    ? `Hospital (${printer.area_actual === "Soporte" ? "En Soporte" : "En Servicio"})`
-                                    : "MUR"
-                                  }
+                                  {status} {status !== "Inoperativo" ? ((printer.ubicacion_entidad || "Hospital") === "Hospital" && !(printer.area_actual || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
                                 </span>
                               </div>
-                              <h3 className="font-bold text-base mt-1 text-on-background">{printer.modelo}</h3>
-                              <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
+
+                              {/* Progress Indicators */}
+                              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30">
+                                <div className="space-y-1">
+                                  <div className="flex justify-between items-center text-[10px] font-bold">
+                                    <span className="text-outline">% TÓNER</span>
+                                    <span className={printer.consumibles.toner_nivel <= 15 ? "text-error" : "text-outline"}>
+                                      {printer.consumibles.toner_nivel}%
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${printer.consumibles.toner_nivel <= 15 ? "bg-error" : "bg-primary"
+                                        }`}
+                                      style={{ width: `${printer.consumibles.toner_nivel}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between items-center text-[10px] font-bold">
+                                    <span className="text-outline">% U. IMAG.</span>
+                                    <span className={printer.consumibles.unidad_imagen_nivel <= 15 ? "text-error" : "text-outline"}>
+                                      {printer.consumibles.unidad_imagen_nivel}%
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${printer.consumibles.unidad_imagen_nivel <= 15 ? "bg-error" : "bg-secondary"
+                                        }`}
+                                      style={{ width: `${printer.consumibles.unidad_imagen_nivel}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between items-center text-[10px] font-bold">
+                                    <span className="text-outline">% KIT MANT.</span>
+                                    <span className={(printer.consumibles.mantenimiento_kit_nivel ?? 100) <= 15 ? "text-error" : "text-outline"}>
+                                      {printer.consumibles.mantenimiento_kit_nivel ?? 100}%
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${(printer.consumibles.mantenimiento_kit_nivel ?? 100) <= 15 ? "bg-error" : "bg-tertiary"
+                                        }`}
+                                      style={{ width: `${printer.consumibles.mantenimiento_kit_nivel ?? 100}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </section>
+              </div>
+
+              {/* Right Column (AI Quick Link & Stock) */}
+              <div className="lg:col-span-5 space-y-6">
+                {/* Quick Gemini Callout */}
+                <section
+                  onClick={() => setCurrentTab("chat")}
+                  className="p-5 bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-2xl shadow-md cursor-pointer hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-between"
+                >
+                  <div className="space-y-1 flex-1 pr-4">
+                    <h3 className="font-bold text-base flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-lg animate-pulse-subtle">smart_toy</span>
+                      Consultar SAMI AI
+                    </h3>
+                    <p className="text-xs text-on-primary-container/90">Sube foto de panel de control o reporta estado de consumibles por texto.</p>
+                  </div>
+                  <span className="material-symbols-outlined text-2xl opacity-80">chevron_right</span>
+                </section>
+
+                {/* Stock / Repuestos Section */}
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-headline-md text-lg text-on-background font-bold flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">inventory_2</span>
+                      Repuestos en Stock
+                    </h2>
+                    <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">
+                      Depósito & Hospital
+                    </span>
+                  </div>
+
+                  <div className="bg-surface border border-outline-variant rounded-2xl p-4 shadow-sm space-y-4">
+                    {repuestos.length === 0 ? (
+                      <p className="text-xs text-outline text-center py-4">Cargando stock...</p>
+                    ) : (
+                      repuestos.map(item => (
+                        <div key={item.id} className="border-b border-outline-variant/30 last:border-0 pb-3 last:pb-0 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-sm text-on-background">{item.modelo}</span>
+                            <span className="text-[10px] text-outline font-medium">Stock de Repuestos</span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2">
+                            {/* Toner Stock Card */}
+                            <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
+                              <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Tóner</span>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-on-surface-variant">Hosp:</span>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrementStockClick(item.id, "toner_hospital", item.toner_hospital || 0)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >-</button>
+                                  <span className="font-bold min-w-[12px] text-center">{item.toner_hospital ?? 0}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualStock(item.id, "toner_hospital", (item.toner_hospital || 0) + 1)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >+</button>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-on-surface-variant">Dep:</span>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrementStockClick(item.id, "toner_deposito", item.toner_deposito || 0)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >-</button>
+                                  <span className="font-bold min-w-[12px] text-center text-primary">{item.toner_deposito ?? 0}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualStock(item.id, "toner_deposito", (item.toner_deposito || 0) + 1)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >+</button>
+                                </div>
+                              </div>
                             </div>
 
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${status === "Inoperativo"
-                              ? "bg-rose-500/10 text-rose-600 border-rose-500/20 animate-pulse-subtle"
-                              : "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                              }`}>
-                              <span className="material-symbols-outlined text-[11px]">
-                                {status === "Inoperativo" ? "cancel" : "warning"}
-                              </span>
-                              {status} {status !== "Inoperativo" ? ((printer.ubicacion_entidad || "Hospital") === "Hospital" && !(printer.area_actual || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
-                            </span>
-                          </div>
+                            {/* Image Unit Stock Card */}
+                            <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
+                              <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Unid. Imagen</span>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-on-surface-variant">Hosp:</span>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrementStockClick(item.id, "unidad_hospital", item.unidad_hospital || 0)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >-</button>
+                                  <span className="font-bold min-w-[12px] text-center">{item.unidad_hospital ?? 0}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualStock(item.id, "unidad_hospital", (item.unidad_hospital || 0) + 1)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >+</button>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-on-surface-variant">Dep:</span>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrementStockClick(item.id, "unidad_deposito", item.unidad_deposito || 0)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >-</button>
+                                  <span className="font-bold min-w-[12px] text-center text-secondary">{item.unidad_deposito ?? 0}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualStock(item.id, "unidad_deposito", (item.unidad_deposito || 0) + 1)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >+</button>
+                                </div>
+                              </div>
+                            </div>
 
-                        {/* Progress Indicators */}
-                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30">
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-center text-[10px] font-bold">
-                              <span className="text-outline">% TÓNER</span>
-                              <span className={printer.consumibles.toner_nivel <= 15 ? "text-error" : "text-outline"}>
-                                {printer.consumibles.toner_nivel}%
-                              </span>
-                            </div>
-                            <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${printer.consumibles.toner_nivel <= 15 ? "bg-error" : "bg-primary"
-                                  }`}
-                                style={{ width: `${printer.consumibles.toner_nivel}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-center text-[10px] font-bold">
-                              <span className="text-outline">% U. IMAG.</span>
-                              <span className={printer.consumibles.unidad_imagen_nivel <= 15 ? "text-error" : "text-outline"}>
-                                {printer.consumibles.unidad_imagen_nivel}%
-                              </span>
-                            </div>
-                            <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${printer.consumibles.unidad_imagen_nivel <= 15 ? "bg-error" : "bg-secondary"
-                                  }`}
-                                style={{ width: `${printer.consumibles.unidad_imagen_nivel}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-center text-[10px] font-bold">
-                              <span className="text-outline">% KIT MANT.</span>
-                              <span className={(printer.consumibles.mantenimiento_kit_nivel ?? 100) <= 15 ? "text-error" : "text-outline"}>
-                                {printer.consumibles.mantenimiento_kit_nivel ?? 100}%
-                              </span>
-                            </div>
-                            <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${(printer.consumibles.mantenimiento_kit_nivel ?? 100) <= 15 ? "bg-error" : "bg-tertiary"
-                                  }`}
-                                style={{ width: `${printer.consumibles.mantenimiento_kit_nivel ?? 100}%` }}
-                              ></div>
+                            {/* Maintenance Kit Stock Card */}
+                            <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
+                              <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Kit Mant.</span>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-on-surface-variant">Hosp:</span>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrementStockClick(item.id, "mantenimiento_hospital", item.mantenimiento_hospital || 0)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >-</button>
+                                  <span className="font-bold min-w-[12px] text-center">{item.mantenimiento_hospital ?? 0}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualStock(item.id, "mantenimiento_hospital", (item.mantenimiento_hospital || 0) + 1)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >+</button>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-on-surface-variant">Dep:</span>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrementStockClick(item.id, "mantenimiento_deposito", item.mantenimiento_deposito || 0)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >-</button>
+                                  <span className="font-bold min-w-[12px] text-center text-tertiary">{item.mantenimiento_deposito ?? 0}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualStock(item.id, "mantenimiento_deposito", (item.mantenimiento_deposito || 0) + 1)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >+</button>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
+                      ))
+                    )}
+                  </div>
+                </section>
               </div>
-            </section>
-
-            {/* Quick Gemini Callout */}
-            <section
-              onClick={() => setCurrentTab("chat")}
-              className="p-5 bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-2xl shadow-md cursor-pointer hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-between"
-            >
-              <div className="space-y-1 flex-1 pr-4">
-                <h3 className="font-bold text-base flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-lg animate-pulse-subtle">smart_toy</span>
-                  Consultar SAMI AI
-                </h3>
-                <p className="text-xs text-on-primary-container/90">Sube foto de panel de control o reporta estado de consumibles por texto.</p>
-              </div>
-              <span className="material-symbols-outlined text-2xl opacity-80">chevron_right</span>
-            </section>
-
-            {/* Stock / Repuestos Section */}
-            <section className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-headline-md text-lg text-on-background font-bold flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">inventory_2</span>
-                  Repuestos en Stock
-                </h2>
-                <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">
-                  Depósito & Hospital
-                </span>
-              </div>
-
-              <div className="bg-surface border border-outline-variant rounded-2xl p-4 shadow-sm space-y-4">
-                {repuestos.length === 0 ? (
-                  <p className="text-xs text-outline text-center py-4">Cargando stock...</p>
-                ) : (
-                  repuestos.map(item => (
-                    <div key={item.id} className="border-b border-outline-variant/30 last:border-0 pb-3 last:pb-0 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-sm text-on-background">{item.modelo}</span>
-                        <span className="text-[10px] text-outline font-medium">Stock de Repuestos</span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2">
-                        {/* Toner Stock Card */}
-                        <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
-                          <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Tóner</span>
-                          <div className="flex justify-between items-center text-[11px]">
-                            <span className="text-on-surface-variant">Hosp:</span>
-                            <div className="flex items-center gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => handleDecrementStockClick(item.id, "toner_hospital", item.toner_hospital || 0)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >-</button>
-                              <span className="font-bold min-w-[12px] text-center">{item.toner_hospital ?? 0}</span>
-                              <button
-                                type="button"
-                                onClick={() => updateManualStock(item.id, "toner_hospital", (item.toner_hospital || 0) + 1)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >+</button>
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-center text-[11px]">
-                            <span className="text-on-surface-variant">Dep:</span>
-                            <div className="flex items-center gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => handleDecrementStockClick(item.id, "toner_deposito", item.toner_deposito || 0)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >-</button>
-                              <span className="font-bold min-w-[12px] text-center text-primary">{item.toner_deposito ?? 0}</span>
-                              <button
-                                type="button"
-                                onClick={() => updateManualStock(item.id, "toner_deposito", (item.toner_deposito || 0) + 1)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >+</button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Image Unit Stock Card */}
-                        <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
-                          <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Unid. Imagen</span>
-                          <div className="flex justify-between items-center text-[11px]">
-                            <span className="text-on-surface-variant">Hosp:</span>
-                            <div className="flex items-center gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => handleDecrementStockClick(item.id, "unidad_hospital", item.unidad_hospital || 0)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >-</button>
-                              <span className="font-bold min-w-[12px] text-center">{item.unidad_hospital ?? 0}</span>
-                              <button
-                                type="button"
-                                onClick={() => updateManualStock(item.id, "unidad_hospital", (item.unidad_hospital || 0) + 1)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >+</button>
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-center text-[11px]">
-                            <span className="text-on-surface-variant">Dep:</span>
-                            <div className="flex items-center gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => handleDecrementStockClick(item.id, "unidad_deposito", item.unidad_deposito || 0)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >-</button>
-                              <span className="font-bold min-w-[12px] text-center text-secondary">{item.unidad_deposito ?? 0}</span>
-                              <button
-                                type="button"
-                                onClick={() => updateManualStock(item.id, "unidad_deposito", (item.unidad_deposito || 0) + 1)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >+</button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Maintenance Kit Stock Card */}
-                        <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
-                          <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Kit Mant.</span>
-                          <div className="flex justify-between items-center text-[11px]">
-                            <span className="text-on-surface-variant">Hosp:</span>
-                            <div className="flex items-center gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => handleDecrementStockClick(item.id, "mantenimiento_hospital", item.mantenimiento_hospital || 0)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >-</button>
-                              <span className="font-bold min-w-[12px] text-center">{item.mantenimiento_hospital ?? 0}</span>
-                              <button
-                                type="button"
-                                onClick={() => updateManualStock(item.id, "mantenimiento_hospital", (item.mantenimiento_hospital || 0) + 1)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >+</button>
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-center text-[11px]">
-                            <span className="text-on-surface-variant">Dep:</span>
-                            <div className="flex items-center gap-0.5">
-                              <button
-                                type="button"
-                                onClick={() => handleDecrementStockClick(item.id, "mantenimiento_deposito", item.mantenimiento_deposito || 0)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >-</button>
-                              <span className="font-bold min-w-[12px] text-center text-tertiary">{item.mantenimiento_deposito ?? 0}</span>
-                              <button
-                                type="button"
-                                onClick={() => updateManualStock(item.id, "mantenimiento_deposito", (item.mantenimiento_deposito || 0) + 1)}
-                                className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                              >+</button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
+            </div>
           </div>
         )}
 
@@ -2128,13 +2525,13 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col md:flex-row gap-3">
                 {/* Search box */}
-                <div className="relative">
+                <div className="relative flex-grow">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-outline material-symbols-outlined">search</span>
                   <input
                     type="text"
-                    placeholder="Buscar por serie, modelo o área..."
+                    placeholder="Buscar serie, área, IP, estado... Usa & para AND, ! para NO (ej: operativa & !soporte)"
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
                     className="w-full bg-surface-container-low border-outline-variant rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-primary focus:border-primary font-body-md"
@@ -2150,7 +2547,7 @@ export default function App() {
                 </div>
 
                 {/* Filter Tags */}
-                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide py-1">
+                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide py-1 shrink-0">
                   {[
                     { id: "all", label: "Todas" },
                     { id: "Operativo", label: "Operativas" },
@@ -2222,7 +2619,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* List */}
+            {/* List (Responsive Mobile Card Grid & Desktop Excel-like Table) */}
             <div className="space-y-3">
               {loadingPrinters ? (
                 <div className="p-8 text-center text-outline-variant">Cargando inventario...</div>
@@ -2233,141 +2630,512 @@ export default function App() {
                   <p className="text-xs text-outline mt-1">Intenta ajustando el filtro o el texto de búsqueda.</p>
                 </div>
               ) : (
-                filteredPrinters.map((printer) => {
-                  const toner = printer.consumibles?.toner_nivel ?? 100;
-                  const unit = printer.consumibles?.unidad_imagen_nivel ?? 100;
+                <>
+                  {/* Mobile View (Cards) — Serial-First Design */}
+                  <div className="md:hidden space-y-2.5">
+                    {filteredPrinters.map((printer) => {
+                      const toner  = printer.consumibles?.toner_nivel ?? 100;
+                      const unit   = printer.consumibles?.unidad_imagen_nivel ?? 100;
+                      const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
+                      const status = getPrinterStatus(printer);
+                      const isInSoporteCard = (printer.area_actual || "").toLowerCase().includes("soporte");
+                      const isMurCard = (printer.ubicacion_entidad || "Hospital").toUpperCase() === "MUR";
 
-                  return (
-                    <div
-                      key={printer.id_serie}
-                      onClick={() => handleOpenEditModal(printer)}
-                      className="p-4 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98]"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex gap-1.5 flex-wrap items-center">
-                            <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">
-                              S/N: {printer.id_serie}
-                            </span>
-                            {printer.codigo_caso_cas && (
-                              <span className="text-[10px] font-bold text-primary px-2 py-0.5 bg-primary-fixed rounded-md max-w-[120px] truncate" title={printer.codigo_caso_cas}>
-                                CAS: {printer.codigo_caso_cas}
-                              </span>
-                            )}
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${(printer.ubicacion_entidad || "Hospital") === "Hospital"
-                              ? "bg-primary-fixed/30 text-primary border border-primary/10"
-                              : "bg-secondary-fixed/30 text-secondary border border-secondary/10"
-                              }`}>
-                              <span className="material-symbols-outlined text-[11px]">
-                                {(printer.ubicacion_entidad || "Hospital") === "Hospital" ? "local_hospital" : "corporate_fare"}
-                              </span>
-                              {(printer.ubicacion_entidad || "Hospital") === "Hospital"
-                                ? `Hospital (${printer.area_actual === "Soporte" ? "En Soporte" : "En Servicio"})`
-                                : "MUR"
-                              }
-                            </span>
-                          </div>
-                          <h3 className="font-bold text-base mt-1 text-on-background">{printer.modelo}</h3>
-                          <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
-                        </div>
+                      const statusColor = status === "Inoperativo"
+                        ? { stripe: "bg-rose-500",    badge: "bg-rose-500/10 text-rose-600 border-rose-500/25",   icon: "cancel",       pulse: "animate-pulse-subtle" }
+                        : status === "Advertencia"
+                          ? { stripe: "bg-amber-500",  badge: "bg-amber-500/10 text-amber-600 border-amber-500/25", icon: "warning",      pulse: "" }
+                          : { stripe: "bg-emerald-500",badge: "bg-emerald-500/10 text-emerald-600 border-emerald-500/25", icon: "check_circle", pulse: "" };
 
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${
-                          getPrinterStatus(printer) === "Inoperativo"
-                            ? "bg-rose-500/10 text-rose-600 border-rose-500/20 animate-pulse-subtle"
-                            : getPrinterStatus(printer) === "Advertencia"
-                              ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                              : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                          }`}>
-                          <span className="material-symbols-outlined text-[11px]">
-                            {getPrinterStatus(printer) === "Inoperativo" ? "cancel" : getPrinterStatus(printer) === "Advertencia" ? "warning" : "check_circle"}
-                          </span>
-                          {getPrinterStatus(printer)} {getPrinterStatus(printer) !== "Inoperativo" ? ((printer.ubicacion_entidad || "Hospital") === "Hospital" && !(printer.area_actual || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
-                        </span>
-                      </div>
+                      return (
+                        <div
+                          key={printer.id_serie}
+                          onClick={() => handleOpenEditModal(printer)}
+                          className="flex bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm overflow-hidden cursor-pointer hover:bg-surface-container-low active:scale-[0.98] transition-all"
+                        >
+                          {/* Left status stripe */}
+                          <div className={`w-1.5 shrink-0 ${statusColor.stripe} ${statusColor.pulse}`} />
 
-                      {/* Consumable Levels */}
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30">
-                        <div className="space-y-1">
-                          <div className="flex justify-between items-center text-[10px] font-bold">
-                            <span className="text-outline">% TÓNER</span>
-                            <span className={toner <= 15 ? "text-error" : "text-outline"}>
-                              {toner}%
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${toner <= 15 ? "bg-error" : "bg-primary"
-                                }`}
-                              style={{ width: `${toner}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between items-center text-[10px] font-bold">
-                            <span className="text-outline">% U. IMAG.</span>
-                            <span className={unit <= 15 ? "text-error" : "text-outline"}>
-                              {unit}%
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${unit <= 15 ? "bg-error" : "bg-secondary"
-                                }`}
-                              style={{ width: `${unit}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between items-center text-[10px] font-bold">
-                            <span className="text-outline">% KIT MANT.</span>
-                            <span className={(printer.consumibles?.mantenimiento_kit_nivel ?? 100) <= 15 ? "text-error" : "text-outline"}>
-                              {printer.consumibles?.mantenimiento_kit_nivel ?? 100}%
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${(printer.consumibles?.mantenimiento_kit_nivel ?? 100) <= 15 ? "bg-error" : "bg-tertiary"
-                                }`}
-                              style={{ width: `${printer.consumibles?.mantenimiento_kit_nivel ?? 100}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      </div>
+                          {/* Card body */}
+                          <div className="flex-1 p-3.5 space-y-3 min-w-0">
 
-                      {/* Predictions Summary */}
-                      {printer.prediccion && (
-                        <div className="pt-2 flex flex-col gap-1 text-[11px] text-on-surface-variant bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/30">
-                          <div className="flex justify-between">
-                            <span>Estimación cambio Tóner:</span>
-                            <span className="font-semibold text-primary">
-                              {printer.prediccion.fecha_cambio_toner} ({printer.prediccion.dias_restantes_toner} días)
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Estimación cambio Unidad:</span>
-                            <span className="font-semibold text-secondary">
-                              {printer.prediccion.fecha_cambio_unidad} ({printer.prediccion.dias_restantes_unidad} días)
-                            </span>
-                          </div>
-                          {printer.prediccion.fecha_cambio_mantenimiento && (
-                            <div className="flex justify-between">
-                              <span>Estimación cambio Kit Mant.:</span>
-                              <span className="font-semibold text-tertiary">
-                                {printer.prediccion.fecha_cambio_mantenimiento} ({printer.prediccion.dias_restantes_mantenimiento} días)
+                            {/* ── TOP ROW: Serial + Status badge ── */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                {/* Serial — Hero element */}
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <span className="material-symbols-outlined text-primary text-[14px]">tag</span>
+                                  <span className="font-mono font-black text-base text-on-background tracking-wider leading-none">
+                                    {printer.id_serie}
+                                  </span>
+                                </div>
+                                {/* Copy hint */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleCopySerial(printer.id_serie); }}
+                                  className="flex items-center gap-0.5 text-[9px] text-outline hover:text-primary transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[10px]">
+                                    {copiedSerialId === printer.id_serie ? "done" : "content_copy"}
+                                  </span>
+                                  {copiedSerialId === printer.id_serie ? "¡Copiado!" : "Copiar S/N"}
+                                </button>
+                              </div>
+
+                              {/* Status badge */}
+                              <span className={`px-2 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${statusColor.badge} ${statusColor.pulse}`}>
+                                <span className="material-symbols-outlined text-[11px]">{statusColor.icon}</span>
+                                {status}
                               </span>
                             </div>
-                          )}
-                        </div>
-                      )}
 
-                      {printer.observaciones && (
-                        <p className="text-[11px] italic text-on-surface-variant bg-surface-container-low px-2 py-1 rounded border border-dashed border-outline-variant/30">
-                          Obs: {printer.observaciones}
-                        </p>
-                      )}
+                            {/* ── MIDDLE ROW: Model, Area, IP ── */}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {/* Model */}
+                              <span className="text-[11px] font-bold text-on-surface bg-surface-container-high px-2 py-0.5 rounded-lg border border-outline-variant/40">
+                                {printer.modelo}
+                              </span>
+
+                              {/* Area */}
+                              <span className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-0.5">
+                                <span className="material-symbols-outlined text-[12px] text-outline">location_on</span>
+                                {printer.area_actual}
+                              </span>
+
+                              {/* Location tag */}
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${
+                                isMurCard
+                                  ? "bg-secondary-fixed/30 text-secondary border border-secondary/20"
+                                  : isInSoporteCard
+                                    ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                    : "bg-primary-fixed/30 text-primary border border-primary/10"
+                              }`}>
+                                <span className="material-symbols-outlined text-[11px]">
+                                  {isMurCard ? "corporate_fare" : isInSoporteCard ? "build" : "local_hospital"}
+                                </span>
+                                {isMurCard ? "MUR" : isInSoporteCard ? "En Soporte" : "En Servicio"}
+                              </span>
+
+                              {/* IP / Connection */}
+                              {printer.ip && printer.ip.trim() !== "" ? (
+                                printer.ip.trim().toLowerCase() === "usb" ? (
+                                  <span className="text-[10px] font-bold text-secondary px-1.5 py-0.5 bg-secondary-fixed/50 rounded-md flex items-center gap-0.5">
+                                    <span className="material-symbols-outlined text-[11px]">usb</span>USB
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-secondary px-1.5 py-0.5 bg-secondary-fixed rounded-md flex items-center gap-0.5 font-mono">
+                                    <span className="material-symbols-outlined text-[11px]">dns</span>
+                                    {printer.ip}
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-[10px] font-bold text-outline px-1.5 py-0.5 bg-surface-container-high rounded-md flex items-center gap-0.5">
+                                  <span className="material-symbols-outlined text-[10px]">link_off</span>
+                                  Sin conexión
+                                </span>
+                              )}
+
+                              {/* CAS code if exists */}
+                              {printer.codigo_caso_cas && (
+                                <span className="text-[10px] font-bold text-primary px-1.5 py-0.5 bg-primary-fixed rounded-md truncate max-w-[110px]" title={printer.codigo_caso_cas}>
+                                  CAS: {printer.codigo_caso_cas}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* ── BOTTOM ROW: Consumable bars ── */}
+                            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/20">
+                              {[
+                                { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-error" : "bg-primary"   },
+                                { label: "U.Img",  value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" },
+                                { label: "Kit",    value: maint,  color: maint <= 15  ? "bg-error" : "bg-tertiary"  },
+                              ].map(({ label, value, color }) => (
+                                <div key={label} className="space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className={`text-[9px] font-bold uppercase tracking-wide ${value <= 15 ? "text-error" : "text-outline"}`}>{label}</span>
+                                    <span className={`text-[10px] font-black ${value <= 15 ? "text-error" : "text-on-surface"}`}>{value}%</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${value}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Observations */}
+                            {printer.observaciones && (
+                              <p className="text-[10px] italic text-on-surface-variant bg-surface-container-low px-2 py-1 rounded-lg border border-dashed border-outline-variant/30 leading-tight">
+                                {printer.observaciones}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+
+                  {/* Desktop View (Excel-like Editable Table) */}
+                  <div className="hidden md:block bg-surface border border-outline-variant rounded-2xl shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse min-w-[1150px] text-xs animate-fade-in">
+                        <thead>
+                          <tr className="bg-slate-50/80 border-b border-outline-variant/80 text-[10px] font-black text-slate-500 tracking-widest select-none uppercase">
+                            <th className="px-5 py-4">IMPRESORA/MODELO</th>
+                            <th className="px-5 py-4">SERIE</th>
+                            <th className="px-5 py-4">IP</th>
+                            <th className="px-5 py-4">ÁREA</th>
+                            <th className="px-5 py-4">ESTADO</th>
+                            <th className="px-5 py-4">CONSUMIBLES</th>
+                            <th className="px-5 py-4">OBSERVACIONES</th>
+                            <th className="px-5 py-4">CÓDIGO DE CASO</th>
+                            <th className="px-5 py-4 text-center">ACCIONES</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredPrinters.map((printer) => {
+                            const isEditing = editingRowId === printer.id_serie;
+                            const toner = isEditing
+                              ? (editingRowData.consumibles?.toner_nivel ?? 100)
+                              : (printer.consumibles?.toner_nivel ?? 100);
+                            const unit = isEditing
+                              ? (editingRowData.consumibles?.unidad_imagen_nivel ?? 100)
+                              : (printer.consumibles?.unidad_imagen_nivel ?? 100);
+                            const maint = isEditing
+                              ? (editingRowData.consumibles?.mantenimiento_kit_nivel ?? 100)
+                              : (printer.consumibles?.mantenimiento_kit_nivel ?? 100);
+
+                            return (
+                              <tr
+                                key={printer.id_serie}
+                                onDoubleClick={() => !isEditing && handleStartRowEdit(printer)}
+                                className={`group hover:bg-slate-50/50 transition-colors border-b border-outline-variant/30 ${
+                                  isEditing ? "bg-primary-fixed/10" : "even:bg-slate-50/10"
+                                }`}
+                              >
+                                {/* IMPRESORA/MODELO */}
+                                <td className="px-5 py-3 align-middle">
+                                  {isEditing ? (
+                                    <select
+                                      value={editingRowData.modelo || "MX431ADN"}
+                                      onChange={(e) => handleRowDataChange("modelo", e.target.value)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
+                                    >
+                                      <option value="MX431ADN">MX431ADN</option>
+                                      <option value="MX632ADWE">MX632ADWE</option>
+                                      <option value="MX722ADHE">MX722ADHE</option>
+                                    </select>
+                                  ) : (
+                                    <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${
+                                      printer.modelo === "MX722ADHE"
+                                        ? "bg-purple-100 text-purple-800 border border-purple-200"
+                                        : printer.modelo === "MX632ADWE"
+                                          ? "bg-indigo-100 text-indigo-800 border border-indigo-200"
+                                          : "bg-blue-100 text-blue-800 border border-blue-200"
+                                    }`}>
+                                      {printer.modelo}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* SERIE */}
+                                <td className="px-5 py-3 align-middle">
+                                  <div className="flex items-center gap-1.5 group/serial">
+                                    <span className="font-mono font-bold bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded border border-slate-200/80 text-[11px] select-all">
+                                      {printer.id_serie}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopySerial(printer.id_serie)}
+                                      className="w-6 h-6 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-500 opacity-0 group-hover/serial:opacity-100 transition-all duration-150 active:scale-90"
+                                      title="Copiar Serie"
+                                    >
+                                      <span className="material-symbols-outlined text-[14px]">
+                                        {copiedSerialId === printer.id_serie ? "check" : "content_copy"}
+                                      </span>
+                                    </button>
+                                  </div>
+                                </td>
+
+                                {/* IP */}
+                                <td className="px-5 py-3 align-middle">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editingRowData.ip || ""}
+                                      onChange={(e) => handleRowDataChange("ip", e.target.value)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                      placeholder="Ej. USB o IP"
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary font-mono text-on-surface"
+                                    />
+                                  ) : (
+                                    <div className="font-mono">
+                                      {printer.ip && printer.ip.trim() !== "" ? (
+                                        printer.ip.trim().toLowerCase() === "usb" ? (
+                                          <span className="bg-secondary-fixed/50 text-on-secondary-container rounded-md px-2 py-0.5 flex items-center gap-1 w-max font-bold text-[10px]">
+                                            <span className="material-symbols-outlined text-[12px]">usb</span>
+                                            USB
+                                          </span>
+                                        ) : (
+                                          <span className="flex items-center gap-1.5 text-on-surface font-semibold text-[11px]">
+                                            <span className="relative flex h-2 w-2">
+                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                            </span>
+                                            {printer.ip}
+                                          </span>
+                                        )
+                                      ) : (
+                                        <span className="text-outline italic text-[11px]">No config</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* ÁREA */}
+                                <td className="px-5 py-3 align-middle">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editingRowData.area_actual || ""}
+                                      onChange={(e) => handleRowDataChange("area_actual", e.target.value)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface font-semibold"
+                                    />
+                                  ) : (
+                                    <span className="font-semibold text-on-surface text-[11px]">
+                                      {printer.area_actual}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* ESTADO */}
+                                <td className="px-5 py-3 align-middle">
+                                  {isEditing ? (
+                                    <select
+                                      value={editingRowData.estado_funcionamiento || "Operativo"}
+                                      onChange={(e) => handleRowDataChange("estado_funcionamiento", e.target.value)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
+                                    >
+                                      <option value="Operativo">Operativo</option>
+                                      <option value="Advertencia">Advertencia</option>
+                                      <option value="Inoperativo">Inoperativo</option>
+                                    </select>
+                                  ) : (
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 w-max ${
+                                      getPrinterStatus(printer) === "Inoperativo"
+                                        ? "bg-rose-500/10 text-rose-600 border-rose-500/20 animate-pulse-subtle"
+                                        : getPrinterStatus(printer) === "Advertencia"
+                                          ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                                          : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                    }`}>
+                                      <span className="material-symbols-outlined text-[12px]">
+                                        {getPrinterStatus(printer) === "Inoperativo" ? "cancel" : getPrinterStatus(printer) === "Advertencia" ? "warning" : "check_circle"}
+                                      </span>
+                                      {getPrinterStatus(printer)}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* CONSUMIBLES */}
+                                <td className="px-5 py-3 align-middle">
+                                  {isEditing ? (
+                                    <div className="flex gap-1.5 min-w-[150px] pt-1">
+                                      <div className="relative flex-1" title="Tóner %">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={editingRowData.consumibles?.toner_nivel ?? 100}
+                                          onChange={(e) => handleRowNestedDataChange("consumibles", "toner_nivel", Number(e.target.value))}
+                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
+                                          placeholder="T"
+                                        />
+                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">T</span>
+                                      </div>
+                                      <div className="relative flex-1" title="Unidad Imagen %">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={editingRowData.consumibles?.unidad_imagen_nivel ?? 100}
+                                          onChange={(e) => handleRowNestedDataChange("consumibles", "unidad_imagen_nivel", Number(e.target.value))}
+                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
+                                          placeholder="U"
+                                        />
+                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">U</span>
+                                      </div>
+                                      <div className="relative flex-1" title="Kit Mantenimiento %">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={editingRowData.consumibles?.mantenimiento_kit_nivel ?? 100}
+                                          onChange={(e) => handleRowNestedDataChange("consumibles", "mantenimiento_kit_nivel", Number(e.target.value))}
+                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
+                                          placeholder="K"
+                                        />
+                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">K</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col gap-1.5 py-0.5 min-w-[170px] max-w-[210px]">
+                                      {/* Toner bar */}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">T</span>
+                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-300 ${
+                                              toner <= 15 ? "bg-rose-500" : toner <= 35 ? "bg-amber-500" : "bg-emerald-500"
+                                            }`}
+                                            style={{ width: `${toner}%` }}
+                                          ></div>
+                                        </div>
+                                        <span className={`text-[10px] font-bold w-7 text-right ${toner <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
+                                          {toner}%
+                                        </span>
+                                      </div>
+                                      {/* Image Unit bar */}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">U</span>
+                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-300 ${
+                                              unit <= 15 ? "bg-rose-500" : unit <= 35 ? "bg-amber-500" : "bg-emerald-500"
+                                            }`}
+                                            style={{ width: `${unit}%` }}
+                                          ></div>
+                                        </div>
+                                        <span className={`text-[10px] font-bold w-7 text-right ${unit <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
+                                          {unit}%
+                                        </span>
+                                      </div>
+                                      {/* Maint Kit bar */}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">K</span>
+                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-300 ${
+                                              maint <= 15 ? "bg-rose-500" : maint <= 35 ? "bg-amber-500" : "bg-emerald-500"
+                                            }`}
+                                            style={{ width: `${maint}%` }}
+                                          ></div>
+                                        </div>
+                                        <span className={`text-[10px] font-bold w-7 text-right ${maint <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
+                                          {maint}%
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* OBSERVACIONES */}
+                                <td className="px-5 py-3 align-middle">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editingRowData.observaciones || ""}
+                                      onChange={(e) => handleRowDataChange("observaciones", e.target.value)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                      placeholder="Observaciones"
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface"
+                                    />
+                                  ) : (
+                                    <div className="max-w-[200px]">
+                                      {printer.observaciones ? (
+                                        <div className="flex items-center gap-1.5 text-slate-600" title={printer.observaciones}>
+                                          <span className="material-symbols-outlined text-[13px] text-slate-400 shrink-0">notes</span>
+                                          <span className="truncate text-[11px] italic leading-tight">
+                                            {printer.observaciones}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-300 italic text-[11px]">-</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* CÓDIGO DE CASO */}
+                                <td className="px-5 py-3 align-middle font-semibold">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editingRowData.codigo_caso_cas || ""}
+                                      onChange={(e) => handleRowDataChange("codigo_caso_cas", e.target.value)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                      placeholder="CAS-XXXX"
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface font-mono"
+                                    />
+                                  ) : (
+                                    printer.codigo_caso_cas ? (
+                                      <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded font-mono text-[10px] block w-max max-w-[130px] truncate" title={printer.codigo_caso_cas}>
+                                        {printer.codigo_caso_cas}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-300">-</span>
+                                    )
+                                  )}
+                                </td>
+
+                                {/* ACCIONES */}
+                                <td className="px-5 py-3 align-middle text-center">
+                                  {isEditing ? (
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSaveRowEdit(printer.id_serie)}
+                                        className="w-8 h-8 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow transition-all active:scale-90"
+                                        title="Guardar fila"
+                                      >
+                                        <span className="material-symbols-outlined text-base font-bold">check</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingRowId(null);
+                                          setEditingRowData({});
+                                        }}
+                                        className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center border border-slate-200 transition-all active:scale-90"
+                                        title="Cancelar edición"
+                                      >
+                                        <span className="material-symbols-outlined text-base">close</span>
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartRowEdit(printer)}
+                                        className="w-7 h-7 flex items-center justify-center bg-surface-container-high text-on-surface-variant hover:bg-outline-variant/50 active:scale-90 rounded-full transition-all border border-outline-variant"
+                                        title="Edición rápida"
+                                      >
+                                        <span className="material-symbols-outlined text-[15px]">edit</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenEditModal(printer)}
+                                        className="w-7 h-7 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20 active:scale-90 rounded-full transition-all border border-primary/20"
+                                        title="Ver detalles e Historial"
+                                      >
+                                        <span className="material-symbols-outlined text-[15px]">visibility</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
-                  );
-                })
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -2375,7 +3143,7 @@ export default function App() {
 
         {/* VIEW: CHAT GEMINI */}
         {currentTab === "chat" && (
-          <div className="space-y-4 flex flex-col h-[70vh] animate-fade-in bg-surface-container border border-outline-variant rounded-3xl overflow-hidden shadow-sm">
+          <div className="space-y-4 flex flex-col h-[75vh] max-w-4xl mx-auto w-full animate-fade-in bg-surface-container border border-outline-variant rounded-3xl overflow-hidden shadow-sm">
             {/* Header */}
             <div className="px-6 py-4 bg-primary text-on-primary flex items-center justify-between shadow-sm">
               <div className="flex items-center gap-2">
@@ -2396,13 +3164,33 @@ export default function App() {
                     ? "bg-primary text-on-primary rounded-tr-none"
                     : "bg-surface-container-high text-on-surface-variant rounded-tl-none border border-outline-variant"
                     }`}>
-                    {msg.image && (
-                      <div className="mb-2 relative rounded-lg overflow-hidden border border-black/10 max-h-40">
-                        <img src={msg.image} alt="Adjunto técnico" className="w-full object-cover" />
+                    {/* Multiple images */}
+                    {msg.images && msg.images.length > 0 && (
+                      <div className={`mb-2 flex gap-1.5 flex-wrap ${msg.images.length > 1 ? 'grid grid-cols-2' : ''}`}>
+                        {msg.images.map((src, i) => (
+                          <div key={i} className="relative rounded-lg overflow-hidden border border-black/10 max-h-32">
+                            <img src={src} alt={`Adjunto ${i + 1}`} className="w-full object-cover" />
+                          </div>
+                        ))}
                       </div>
                     )}
-
-                    {/* Render message formatting */}
+                    {/* Backward compat: single image */}
+                    {msg.image && !msg.images && (
+                      <div className="mb-2 relative rounded-lg overflow-hidden border border-black/10 max-h-40">
+                        <img src={msg.image} alt="Adjunto" className="w-full object-cover" />
+                      </div>
+                    )}
+                    {/* PDF files */}
+                    {msg.files && msg.files.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {msg.files.map((name, i) => (
+                          <span key={i} className="flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded text-[10px] font-semibold">
+                            <span className="material-symbols-outlined text-[12px]">picture_as_pdf</span>
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="whitespace-pre-line leading-relaxed">
                       {msg.text}
                     </div>
@@ -2417,7 +3205,7 @@ export default function App() {
                 <div className="self-start max-w-[80%] space-y-1">
                   <div className="bg-surface-container-high text-on-surface-variant p-4 rounded-2xl rounded-tl-none border border-outline-variant shadow-sm flex items-center gap-3">
                     <span className="material-symbols-outlined text-primary text-lg animate-spin">sync</span>
-                    <span className="text-xs font-semibold animate-pulse">Analizando evidencia y actualizando base de datos...</span>
+                    <span className="text-xs font-semibold animate-pulse">Analizando y actualizando la información...</span>
                   </div>
                 </div>
               )}
@@ -2427,27 +3215,43 @@ export default function App() {
 
             {/* Input & Form */}
             <form onSubmit={handleSendChatMessage} className="p-4 bg-surface border-t border-outline-variant">
-              {chatImage && (
-                <div className="mb-3 p-2 bg-surface-container-low rounded-xl border border-outline-variant flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <img src={chatImage.preview} alt="Vista previa" className="w-10 h-10 object-cover rounded-md border border-outline-variant" />
-                    <span className="text-xs font-medium text-on-surface-variant">Foto adjuntada</span>
+              {/* Pending attachments queue */}
+              {pendingAttachments.length > 0 && (
+                <div className="mb-3 p-2 bg-surface-container-low rounded-xl border border-outline-variant space-y-1.5">
+                  <span className="text-[9px] font-bold text-outline uppercase tracking-wider block">{pendingAttachments.length} archivo{pendingAttachments.length !== 1 ? 's' : ''} adjunto{pendingAttachments.length !== 1 ? 's' : ''} — listos para enviar</span>
+                  <div className="flex flex-wrap gap-2">
+                    {pendingAttachments.map((att, idx) => (
+                      <div key={idx} className="relative group">
+                        {att.type === "image" ? (
+                          <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-outline-variant">
+                            <img src={att.preview} alt={att.name} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 bg-surface-container-high px-2 py-1.5 rounded-lg border border-outline-variant text-[10px] font-semibold text-on-surface-variant max-w-[120px]">
+                            <span className="material-symbols-outlined text-error text-sm">picture_as_pdf</span>
+                            <span className="truncate">{att.name}</span>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(idx)}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full bg-error text-on-error shadow text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <span className="material-symbols-outlined text-[12px]">close</span>
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={removeAttachedImage}
-                    className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface-container-high text-error"
-                  >
-                    <span className="material-symbols-outlined text-base">close</span>
-                  </button>
                 </div>
               )}
 
               <div className="flex flex-col gap-2">
                 <textarea
+                  ref={chatTextareaRef}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Detalla reporte de consumibles o sube imagen..."
+                  onPaste={handleChatPaste}
+                  placeholder="Escribe el reporte o pega una imagen (Ctrl+V)..."
                   className="w-full bg-surface-container-low border-outline-variant rounded-xl text-sm focus:ring-primary focus:border-primary resize-none p-3 h-16 font-body-md"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -2457,70 +3261,106 @@ export default function App() {
                   }}
                 />
 
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    ref={fileInputRef}
-                    className="hidden"
-                  />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleImageChange}
-                    ref={cameraInputRef}
-                    className="hidden"
-                  />
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls, .csv"
-                    onChange={handleExcelUpload}
-                    ref={excelFileInputRef}
-                    className="hidden"
-                  />
-                  <div className="grid grid-cols-4 gap-1.5 w-full">
-                    <button
-                      type="button"
-                      onClick={() => cameraInputRef.current?.click()}
-                      className="flex flex-col items-center justify-center gap-1.5 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]"
-                    >
+                  <input type="file" accept="image/*" multiple onChange={handleImageChange} ref={fileInputRef} className="hidden" />
+                  <input type="file" accept="image/*" capture="environment" onChange={handleImageChange} ref={cameraInputRef} className="hidden" />
+                  <input type="file" accept=".pdf" multiple onChange={handlePdfChange} ref={pdfInputRef} className="hidden" />
+                  <input type="file" accept=".xlsx, .xls, .csv" onChange={handleExcelUpload} ref={excelFileInputRef} className="hidden" />
+
+                  <div className="grid grid-cols-5 gap-1.5 w-full">
+                    <button type="button" onClick={() => cameraInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-1 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]">
                       <span className="material-symbols-outlined text-base">photo_camera</span>
-                      <span>Tomar Foto</span>
+                      <span>Cámara</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex flex-col items-center justify-center gap-1.5 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]"
-                    >
+                    <button type="button" onClick={() => fileInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-1 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]">
                       <span className="material-symbols-outlined text-base">image</span>
-                      <span>Galería</span>
+                      <span>Fotos</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => excelFileInputRef.current?.click()}
-                      className="flex flex-col items-center justify-center gap-1.5 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]"
-                    >
+                    <button type="button" onClick={() => pdfInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-1 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]">
+                      <span className="material-symbols-outlined text-base">picture_as_pdf</span>
+                      <span>PDF</span>
+                    </button>
+                    <button type="button" onClick={() => excelFileInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-1 py-2 px-1 bg-secondary-container text-on-secondary-container rounded-xl font-bold hover:bg-secondary-container/80 active:scale-95 transition-all text-[10px]">
                       <span className="material-symbols-outlined text-base">upload_file</span>
-                      <span>Excel IA</span>
+                      <span>Excel</span>
                     </button>
-                    <button
-                      type="submit"
-                      disabled={(!chatInput.trim() && !chatImage) || isChatLoading}
-                      className="flex flex-col items-center justify-center gap-1.5 py-2 px-1 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary-container disabled:opacity-50 active:scale-95 transition-all text-[10px] shadow-md"
-                    >
+                    <button type="submit"
+                      disabled={(!chatInput.trim() && pendingAttachments.length === 0) || isChatLoading}
+                      className="flex flex-col items-center justify-center gap-1 py-2 px-1 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary-container disabled:opacity-50 active:scale-95 transition-all text-[10px] shadow-md">
                       <span className="material-symbols-outlined text-base">send</span>
                       <span>Enviar</span>
                     </button>
                   </div>
               </div>
             </form>
+
+            {/* Confirmation Modal */}
+            {showChatConfirm && pendingSendPayload && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+                <div className="bg-surface rounded-3xl shadow-2xl border border-outline-variant max-w-md w-full overflow-hidden">
+                  <div className="px-6 py-4 bg-primary text-on-primary flex items-center gap-2">
+                    <span className="material-symbols-outlined">fact_check</span>
+                    <h3 className="font-bold text-base">Confirmar envío</h3>
+                  </div>
+                  <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <p className="text-xs text-on-surface-variant">Revisa la información que se va a procesar. ¿Deseas continuar?</p>
+
+                    {pendingSendPayload.text.trim() && (
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-bold text-outline uppercase tracking-wider block">Mensaje de texto</span>
+                        <p className="text-xs bg-surface-container-low rounded-xl p-3 border border-outline-variant whitespace-pre-line">{pendingSendPayload.text}</p>
+                      </div>
+                    )}
+
+                    {pendingSendPayload.attachments.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-bold text-outline uppercase tracking-wider block">{pendingSendPayload.attachments.length} archivo{pendingSendPayload.attachments.length !== 1 ? 's' : ''} adjunto{pendingSendPayload.attachments.length !== 1 ? 's' : ''}</span>
+                        <div className="flex flex-wrap gap-2">
+                          {pendingSendPayload.attachments.map((att, i) => (
+                            att.type === "image" ? (
+                              <img key={i} src={att.preview} alt={att.name} className="w-20 h-20 object-cover rounded-xl border border-outline-variant" />
+                            ) : (
+                              <div key={i} className="flex items-center gap-1 bg-surface-container-high px-3 py-2 rounded-xl border border-outline-variant text-xs font-semibold text-on-surface-variant">
+                                <span className="material-symbols-outlined text-error text-base">picture_as_pdf</span>
+                                {att.name}
+                              </div>
+                            )
+                          ))}
+                        </div>
+                        {pendingSendPayload.attachments.length > 1 && (
+                          <p className="text-[10px] text-outline italic">⚠️ Solo se procesará el primer archivo adjunto con la IA en esta versión.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-3 p-4 border-t border-outline-variant">
+                    <button
+                      type="button"
+                      onClick={() => { setShowChatConfirm(false); setPendingSendPayload(null); }}
+                      className="flex-1 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant text-sm font-bold hover:bg-surface-container-low active:scale-95 transition-all"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmSend}
+                      className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary text-sm font-bold hover:bg-primary/90 active:scale-95 transition-all shadow-md"
+                    >
+                      Sí, procesar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* VIEW: AUDITORIA / HISTORIAL */}
         {currentTab === "historial" && (
-          <div className="space-y-4 animate-fade-in">
+          <div className="space-y-4 animate-fade-in max-w-4xl mx-auto w-full">
             <h2 className="font-headline-md text-xl text-on-background font-bold">Historial de Lecturas</h2>
             <p className="text-xs text-on-surface-variant -mt-2">Registro unificado de las lecturas y actualizaciones en Firestore.</p>
 
@@ -2651,7 +3491,7 @@ export default function App() {
 
         {/* VIEW: SETTINGS (Fallback API Key Configuration) */}
         {currentTab === "settings" && (
-          <div className="space-y-5 animate-fade-in">
+          <div className="space-y-5 animate-fade-in max-w-2xl mx-auto w-full">
             <h2 className="font-headline-md text-xl text-on-background font-bold">Ajustes del Sistema</h2>
 
             <form onSubmit={handleSaveApiKey} className="p-5 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-4">
@@ -2705,7 +3545,7 @@ export default function App() {
       </main>
 
       {/* BottomNavBar */}
-      <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface border-t border-outline-variant shadow-lg rounded-t-xl max-w-lg mx-auto left-1/2 -translate-x-1/2">
+      <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface border-t border-outline-variant shadow-lg rounded-t-xl max-w-lg mx-auto left-1/2 -translate-x-1/2 md:hidden">
         <button
           onClick={() => {
             setFilterCriticidad("all");
@@ -2912,15 +3752,27 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Código de Caso CAS</label>
-                <input
-                  type="text"
-                  value={editCasCode}
-                  onChange={(e) => setEditCasCode(e.target.value)}
-                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
-                  placeholder="Ej. CAS-6013278-V6N2C5 (Opcional)"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Dirección IP</label>
+                  <input
+                    type="text"
+                    value={editIp}
+                    onChange={(e) => setEditIp(e.target.value)}
+                    className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
+                    placeholder="Ej. 192.168.1.15 (Opcional)"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Código de Caso CAS</label>
+                  <input
+                    type="text"
+                    value={editCasCode}
+                    onChange={(e) => setEditCasCode(e.target.value)}
+                    className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
+                    placeholder="Ej. CAS-6013278-V6N2C5 (Opcional)"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
