@@ -1,7 +1,9 @@
 // src/services/GeminiService.js
+// Multi-provider AI service: Gemini → OpenRouter → OCR (Tesseract.js)
 
-// Function to resolve Gemini API Key either from env or runtime localStorage
-function getApiKey() {
+// ─── API Key Helpers ───
+
+function getGeminiKey() {
   const envKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (envKey && envKey !== "TU_API_KEY_DE_GEMINI_AQUI" && envKey.trim() !== "") {
     return envKey;
@@ -9,78 +11,36 @@ function getApiKey() {
   return localStorage.getItem("sami_gemini_api_key") || "";
 }
 
-async function fetchWithRetry(url, options, retries = 5, delay = 1000) {
-  try {
-    const response = await fetch(url, options);
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => "");
-      throw new Error(`HTTP Error: ${response.status} - ${errorBody}`);
-    }
-    return await response.json();
-  } catch (error) {
-    if (retries <= 0) throw error;
-    console.warn(`Gemini request failed. Retrying in ${delay}ms... (Retries left: ${retries})`, error);
-    await new Promise(resolve => setTimeout(resolve, delay));
-    return fetchWithRetry(url, options, retries - 1, delay * 2);
+function getOpenRouterKey() {
+  const envKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+  if (envKey && envKey.trim() !== "") {
+    return envKey;
   }
+  return localStorage.getItem("sami_openrouter_api_key") || "";
 }
 
-async function callGeminiAPI(parts) {
-  const key = getApiKey();
-  if (!key) {
-    throw new Error("API Key de Gemini no configurada. Por favor ingrésela en los Ajustes.");
-  }
+// ─── Shared Prompt ───
 
-  // Se añade una lista de modelos candidatos para tolerancia a fallos (503 Service Unavailable / High Demand)
-  const models = ["gemini-1.5-flash", "gemini-flash-latest", "gemini-1.5-flash-8b"];
-  let lastError = null;
-
-  for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const payload = {
-      contents: [{ parts }]
-    };
-
-    try {
-      console.log(`Intentando llamada Gemini con el modelo: ${model}`);
-      const responseData = await fetchWithRetry(url, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-goog-api-key": key
-        },
-        body: JSON.stringify(payload)
-      });
-      
-      const rawText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (rawText) {
-        return rawText;
-      }
-      throw new Error("La respuesta de la API de Gemini está vacía.");
-    } catch (error) {
-      console.warn(`El modelo ${model} falló o está sobrecargado: ${error.message}. Intentando siguiente candidato...`);
-      lastError = error;
-    }
-  }
-
-  throw new Error(`Error en los servidores de Gemini (503/Indisponible): ${lastError?.message || "No se pudo obtener respuesta de ningún modelo candidato."}`);
-}
-
-export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], impresorasRegistradas = []) {
-  const promptSistema = `
+function buildSystemPrompt() {
+  return `
     Eres el motor analítico y gestor de base de datos de SAMI-Lexmark para el Hospital Cayetano Heredia.
     Tu tarea es procesar el texto ingresado o la imagen de pantalla proporcionada para determinar la ACCIÓN requerida sobre el inventario de impresoras o el inventario de repuestos/stock.
     
     Identifica el tipo de operación:
     1. "crear": Si el usuario pide agregar, registrar, dar de alta, crear o añadir una nueva impresora.
     2. "eliminar": Si el usuario pide explícitamente eliminar, borrar, retirar o dar de baja una impresora.
-    3. "actualizar": Si se reporta un cambio de suministros, una lectura, mantenimiento, cambio de ubicación o observaciones para una impresora existente.
-    4. "actualizar_stock": Si se reporta o se muestra en una foto el conteo de repuestos de TÓNER, UNIDAD DE IMAGEN o KIT DE MANTENIMIENTO disponibles.
+    3. "actualizar": Si se reporta un cambio de suministros, una lectura, mantenimiento, cambio de ubicación o observaciones para una impresora existente. REGLA CRÍTICA: Si la imagen muestra una página de "Estadísticas dispositivo" o "Device Statistics" de una impresora Lexmark (con número de serie, barras de progreso de consumibles, modelo, etc.), la acción es SIEMPRE "actualizar" — NUNCA "actualizar_stock". Debes extraer el número de serie del encabezado, los niveles porcentuales de las barras, y el modelo. Estos son los niveles de consumibles INSTALADOS en ESA impresora específica, NO son conteos de repuestos en almacén.
+    4. "actualizar_stock": EXCLUSIVAMENTE cuando el usuario reporta explícitamente en TEXTO (no imagen de estadísticas de impresora) cuántas unidades de repuesto tiene disponibles en el almacén/depósito/hospital para distribución. Ejemplo: "Tenemos 5 tóners de 431 en el depósito y 2 en el hospital". NUNCA uses esta acción cuando la imagen muestra estadísticas de UNA impresora con su número de serie.
     5. "actualizar_multiples": Si el usuario proporciona una lista, tabla, texto copiado, o reporte de múltiples impresoras con sus series/modelos/áreas/IPs para registrar o actualizar de forma masiva en lote.
     6. "conversar": Si el usuario te hace una pregunta general, consulta sobre el estado, estadísticas o listado de impresoras del inventario (por ejemplo, cuáles están duplicadas por número de serie, modelo, IP, o área), te saluda, o te pide información detallada sobre la base de datos de impresoras proporcionada.
        - Identifica la cantidad que va para el "hospital" (para cambio rápido/cambio rápido) y para el "depósito" (almacén/abastecer).
        - Normaliza el modelo: si dice "431" asume "MX431ADN", si dice "632" asume "MX632ADWE", si dice "722" asume "MX722ADHE".
        - Identifica el tipo de insumo: "toner" (tóner/cartucho negro), "unidad_imagen" (unidad de imagen/tambor/drum), o "mantenimiento" (kit de mantenimiento/fusi).
+ 
+    REGLA DE DESAMBIGUACIÓN CRÍTICA — "actualizar" vs "actualizar_stock":
+    - Imagen de "Estadísticas dispositivo" con S/N y barras de progreso → SIEMPRE "actualizar" (actualiza los consumibles de ESA impresora identificada por su S/N)
+    - Texto del usuario diciendo "hay X tóners disponibles en el depósito" → "actualizar_stock"
+    - En caso de duda, si hay un número de serie visible, usa "actualizar"
  
     EXTRACCIÓN DE CONSUMIBLES:
     - Extrae el nivel de "toner_nivel" (porcentajes de cartucho negro), "unidad_imagen_nivel" (porcentajes de unidad de imagen) y "mantenimiento_kit_nivel" (porcentajes de kit mantenimiento) de la imagen o del texto. Si no aparecen explícitamente, ponlos como null.
@@ -90,17 +50,37 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
     - Si se indica explícitamente "USB" o "Cableado por USB", establece el campo "ip" como "USB".
     - Si no se especifica ninguna dirección IP ni se menciona "USB" (es decir, está vacío o no determinado), establece el campo "ip" como null.
     
-    REGLAS VISUALES PARA ESTIMAR NIVELES DE SUMINISTROS (MUY IMPORTANTE):
-    - En las imágenes de reportes impresos de estadísticas, los consumibles se muestran en 3 secciones separadas y ordenadas:
-      1. **Cartucho negro** (Tóner): Usa la primera barra de progreso.
-      2. **Kit mantenimiento** (Fuser/Kit de mantenimiento): Usa la segunda barra de progreso.
-      3. **Unidad imagen** (Unidad de imagen/Tambor): Usa la tercera barra de progreso.
-    - Determina el nivel (%) basándote ÚNICAMENTE en la barra de progreso correspondiente de cada sección (color negro o relleno representa el nivel restante):
-      - Una barra completamente negra/rellena representa el 100%.
-      - Una barra con color negro/relleno hasta la mitad representa el 50%.
-      - Una barra muy corta representa el 10% al 20% (ej. si la barra de Cartucho Negro está muy corta, es ~18%).
-    - PROHIBIDO: NUNCA intentes calcular el nivel dividiendo "Caras por consumible" entre "Capacidad" ni usando otras estadísticas numéricas de la página. Esas cifras son contadores históricos de páginas impresas y no se corresponden con el nivel actual de la barra. Guíate estrictamente por la proporción visual de relleno negro de cada barra.
-    - Si al lado o dentro de la barra hay un texto numérico con porcentaje (ej: 40%), dale prioridad absoluta a ese número. Si no hay número, estima visualmente basándote en la regla de proporcionalidad anterior.
+    REGLAS VISUALES PARA ESTIMAR NIVELES DE SUMINISTROS (EXTREMADAMENTE IMPORTANTE — EL ORDEN FÍSICO VARÍA SEGÚN EL TIPO DE FOTO):
+    
+    1. EN FOTOS DE HOJAS IMPRESAS DE "ESTADÍSTICAS DISPOSITIVO":
+       Las secciones de consumibles están ordenadas de arriba a abajo en este EXACTO orden visual:
+       * 1ra Sección/Barra: **Cartucho negro / Tóner** -> Asigna este valor a "toner_nivel".
+       * 2da Sección/Barra: **Kit mantenimiento** -> Asigna este valor a "mantenimiento_kit_nivel".
+       * 3ra Sección/Barra: **Unidad imagen** -> Asigna este valor a "unidad_imagen_nivel".
+       ⚠️ ADVERTENCIA CRÍTICA: En la hoja impresa, el Kit de Mantenimiento es la segunda sección/barra y la Unidad de Imagen es la tercera. ¡No las inviertas!
+    
+    2. EN FOTOS DE LA PANTALLA LCD / TOUCHSCREEN DE LA IMPRESORA:
+       Las barras de progreso de la pantalla están ordenadas de arriba a abajo en este otro orden visual:
+       * 1ra Barra: **Cartucho negro / Tóner** -> Asigna este valor a "toner_nivel".
+       * 2da Barra: **Unidad imagen** -> Asigna este valor a "unidad_imagen_nivel".
+       * 3ra Barra: **Kit mantenimiento** -> Asigna este valor a "mantenimiento_kit_nivel".
+       ⚠️ ADVERTENCIA CRÍTICA: En la pantalla LCD, la Unidad de Imagen es la segunda barra y el Kit de Mantenimiento es la tercera. ¡No las inviertas!
+
+    CÓMO LEER LAS BARRAS Y ESTIMAR EL NIVEL:
+    - En las HOJAS IMPRESAS, las etiquetas de escala "0%" (a la izquierda de la barra) y "100%" (a la derecha de la barra) son marcas fijas impresas y NO representan el nivel actual. ¡IGNÓRALAS por completo! No uses 0% o 100% solo porque ves esas etiquetas impresas.
+    - IGNORA por completo los números de "Capacidad" y "Caras por consumible" para calcular los niveles. Son contadores históricos y no reflejan el nivel actual del chip.
+    - El nivel real de consumible se mide ÚNICAMENTE por el largo de la BARRA NEGRA HORIZONTAL:
+      * Barra de Tóner (1ra): La barra negra llena casi toda la longitud de izquierda a derecha (aproximadamente 95%).
+      * Barra de Kit Mantenimiento (2da): La barra negra se llena desde la izquierda hasta un poco más de la mitad (aproximadamente 60%). El resto está en blanco.
+      * Barra de Unidad Imagen (3ra): La barra negra se llena desde la izquierda hasta poco más de un tercio (aproximadamente 35%). El resto está en blanco.
+    - En la PANTALLA LCD:
+      * Estima el largo de la barra de color (verde, azul, etc.) sobre el fondo oscuro.
+      * Si la barra está casi vacía, es ~5% o ~10%.
+      * Si está llena un poco más de la mitad, es ~60%.
+      
+    INFORMACIÓN EXTRA PARA LAS FOTOS DE PANTALLA LCD / TOUCHSCREEN:
+    - Si el usuario agrega texto adicional junto a la foto (ej: "D8xh", "FD85"), ese es el SUFIJO del número de serie de la impresora. Colócalo en "id_serie".
+    - La acción para estas fotos es SIEMPRE "actualizar" — estás actualizando los consumibles de ESA impresora específica.
  
     
     IDENTIFICACIÓN POR SUFIJO DE SERIE (Muy Importante):
@@ -151,8 +131,8 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
       "ubicacion_entidad": "Hospital|MUR",
       "ip": "string",
       "toner_nivel": number,
-      "unidad_imagen_nivel": number,
       "mantenimiento_kit_nivel": number,
+      "unidad_imagen_nivel": number,
       "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
       "observaciones": "string",
       "codigo_caso_cas": "string"
@@ -167,13 +147,13 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
           "modelo": "string",
           "area_actual": "string",
           "ubicacion_entidad": "Hospital|MUR",
-          "ip": "string", // "USB", un IP real, o null si está vacío/no especificado
-          "toner_nivel": number, // opcional, null si no se especifica
-          "unidad_imagen_nivel": number, // opcional, null si no se especifica
-          "mantenimiento_kit_nivel": number, // opcional, null si no se especifica
-          "estado_funcionamiento": "Operativo|Inoperativo|Advertencia", // opcional
-          "observaciones": "string", // opcional
-          "codigo_caso_cas": "string" // opcional
+          "ip": "string",
+          "toner_nivel": number,
+          "mantenimiento_kit_nivel": number,
+          "unidad_imagen_nivel": number,
+          "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
+          "observaciones": "string",
+          "codigo_caso_cas": "string"
         }
       ]
     }
@@ -181,7 +161,7 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
     Para "conversar":
     {
       "accion": "conversar",
-      "respuesta_chat": "string" // Tu respuesta analítica y conversacional en formato Markdown en español. Responde con detalle a la consulta del usuario basándote en el inventario actual. Por ejemplo, si te pide impresoras duplicadas, identifícalas y detállalas por su S/N, modelo y área.
+      "respuesta_chat": "string"
     }
  
     Para "actualizar_stock":
@@ -191,8 +171,8 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
         {
           "modelo": "MX431ADN|MX632ADWE|MX722ADHE",
           "insumo": "toner|unidad_imagen|mantenimiento",
-          "cantidad_hospital": number,  // Opcional: cantidad en el hospital
-          "cantidad_deposito": number   // Opcional: cantidad en depósito
+          "cantidad_hospital": number,
+          "cantidad_deposito": number
         }
       ],
       "observaciones": "Resumen del stock actualizado"
@@ -200,20 +180,235 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
  
     Responde EXCLUSIVAMENTE con el JSON plano y limpio, sin etiquetas markdown de bloque.
   `;
+}
 
-  const parts = [{ text: promptSistema }];
+// ─── Provider 1: Google Gemini API ───
+
+async function callGeminiAPI(parts) {
+  const key = getGeminiKey();
+  if (!key) return null; // Skip if no key
+
+  const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"];
+
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    try {
+      console.log(`[Gemini] Intentando modelo: ${model}`);
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({ contents: [{ parts }] })
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        if (response.status === 429) {
+          console.warn(`[Gemini] Cuota agotada (429) en modelo ${model}`);
+          // Quota is account-level, skip all Gemini models
+          return null;
+        }
+        if (response.status === 404) {
+          console.warn(`[Gemini] Modelo ${model} no encontrado (404), probando siguiente...`);
+          continue;
+        }
+        throw new Error(`HTTP ${response.status}: ${body.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (rawText) {
+        console.log(`[Gemini] ✓ Respuesta exitosa con ${model}`);
+        return rawText;
+      }
+    } catch (error) {
+      console.warn(`[Gemini] Error con ${model}:`, error.message);
+    }
+  }
+
+  return null; // All Gemini models failed
+}
+
+// ─── Provider 2: OpenRouter API (Free models with vision) ───
+
+async function callOpenRouterAPI(systemPrompt, userText, adjuntos = []) {
+  const key = getOpenRouterKey();
+  if (!key) return null; // Skip if no key
+
+  const freeModels = [
+    "google/gemini-2.5-flash",
+    "google/gemini-flash-1.5",
+    "google/gemini-flash-1.5:free",
+    "openai/gpt-4o",
+    "openai/gpt-4o-mini"
+  ];
+
+  // Build OpenAI-compatible messages
+  const userContent = [];
+  if (userText) {
+    userContent.push({ type: "text", text: userText });
+  }
+  for (const adj of adjuntos) {
+    if (adj.base64 && adj.mimeType) {
+      userContent.push({
+        type: "image_url",
+        image_url: { url: `data:${adj.mimeType};base64,${adj.base64}` }
+      });
+    }
+  }
+  if (userContent.length === 0) {
+    userContent.push({ type: "text", text: "(sin texto)" });
+  }
+
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userContent }
+  ];
+
+  for (const model of freeModels) {
+    try {
+      console.log(`[OpenRouter] Intentando modelo: ${model}`);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key}`,
+          "HTTP-Referer": window.location.origin,
+          "X-Title": "SAMI-Lexmark"
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: 1000
+        })
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        if (response.status === 429) {
+          console.warn(`[OpenRouter] Rate limit en ${model}, probando siguiente...`);
+          continue;
+        }
+        throw new Error(`HTTP ${response.status}: ${body.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+      const rawText = data.choices?.[0]?.message?.content;
+      if (rawText) {
+        console.log(`[OpenRouter] ✓ Respuesta exitosa con ${model}`);
+        return rawText;
+      }
+    } catch (error) {
+      console.warn(`[OpenRouter] Error con ${model}:`, error.message);
+    }
+  }
+
+  return null;
+}
+
+// ─── Provider 3: Tesseract.js OCR (Offline fallback) ───
+
+async function performOCRFallback(adjuntos = []) {
+  const imageAdj = adjuntos.find(a => a.mimeType?.startsWith("image/"));
+  if (!imageAdj) return null;
+
+  try {
+    console.log("[OCR] Iniciando extracción de texto con Tesseract.js...");
+    const Tesseract = await import("tesseract.js");
+    const worker = await Tesseract.createWorker("spa+eng");
+    
+    const dataUrl = `data:${imageAdj.mimeType};base64,${imageAdj.base64}`;
+    const { data: { text } } = await worker.recognize(dataUrl);
+    await worker.terminate();
+
+    console.log("[OCR] Texto extraído:", text.substring(0, 500));
+    return parseOCRText(text);
+  } catch (error) {
+    console.error("[OCR] Error:", error);
+    return null;
+  }
+}
+
+function parseOCRText(text) {
+  const lines = text.replace(/\r/g, "").split("\n").map(l => l.trim()).filter(Boolean);
+  const fullText = lines.join(" ");
+
+  // Extract serial number (pattern: 10-13 alphanumeric chars)
+  let serial = "";
+  const serialPatterns = [
+    /[Nn][uú]mero\s*de\s*serie[:\s]*([A-Za-z0-9]{10,15})/i,
+    /(?:S\/N|Serie)[:\s]*([A-Za-z0-9]{10,15})/i,
+    /\b(7\d{12}[A-Fa-f0-9]{0,3})\b/,
+    /\b([A-Z0-9]{10,14}[A-Fa-f][A-Z0-9]{0,4})\b/i
+  ];
+  for (const pat of serialPatterns) {
+    const m = fullText.match(pat);
+    if (m) { serial = m[1]; break; }
+  }
+
+  // Extract model
+  let modelo = "MX431ADN";
+  if (/mx\s*632/i.test(fullText)) modelo = "MX632ADWE";
+  else if (/mx\s*722/i.test(fullText)) modelo = "MX722ADHE";
+  else if (/mx\s*431/i.test(fullText)) modelo = "MX431ADN";
+
+  // Extract percentage levels from bars or text
+  // Look for "Nivel consumible" followed by percentage pattern "X%"
+  const percentages = [];
+  const pctPattern = /(\d{1,3})\s*%/g;
+  let match;
+  while ((match = pctPattern.exec(fullText)) !== null) {
+    const val = parseInt(match[1]);
+    if (val >= 0 && val <= 100) percentages.push(val);
+  }
+
+  // The printer stats page typically shows: Toner %, Kit %, Unidad Imagen % in that order
+  const toner = percentages.length > 0 ? percentages[0] : null;
+  const maint = percentages.length > 1 ? percentages[1] : null;
+  const unit = percentages.length > 2 ? percentages[2] : null;
+
+  if (!serial) {
+    return null; // Can't do anything without a serial
+  }
+
+  // Determine status
+  let estado = "Operativo";
+  if (toner === 0 || unit === 0 || maint === 0) estado = "Advertencia";
+  if ((toner !== null && toner <= 15) || (unit !== null && unit <= 15) || (maint !== null && maint <= 15)) estado = "Advertencia";
+
+  return {
+    accion: "actualizar",
+    id_serie: serial,
+    modelo,
+    area_actual: null,
+    ubicacion_entidad: "Hospital",
+    ip: null,
+    toner_nivel: toner,
+    unidad_imagen_nivel: unit,
+    mantenimiento_kit_nivel: maint,
+    estado_funcionamiento: estado,
+    observaciones: "",
+    codigo_caso_cas: null,
+    _provider: "OCR (Tesseract.js)",
+    _ocr_raw: fullText.substring(0, 300)
+  };
+}
+
+// ─── Main Export: Multi-provider orchestrator ───
+
+export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], impresorasRegistradas = []) {
+  const systemPrompt = buildSystemPrompt();
+  let providerUsed = "";
+
+  // Build Gemini-format parts
+  const parts = [{ text: systemPrompt }];
   if (impresorasRegistradas && impresorasRegistradas.length > 0) {
     const compactPrinters = impresorasRegistradas.map(p => ({
-      sn: p.id_serie,
-      modelo: p.modelo,
-      area: p.area_actual,
-      entidad: p.ubicacion_entidad,
-      ip: p.ip || "Desconectado",
-      estado: p.estado_funcionamiento,
-      obs: p.observaciones || "",
+      sn: p.id_serie, modelo: p.modelo, area: p.area_actual,
+      entidad: p.ubicacion_entidad, ip: p.ip || "Desconectado",
+      estado: p.estado_funcionamiento, obs: p.observaciones || "",
       caso: p.codigo_caso_cas || ""
     }));
-    parts.push({ text: `INVENTARIO DE IMPRESORAS REGISTRADAS ACTUALMENTE EN LA BASE DE DATOS (Firestore):\n${JSON.stringify(compactPrinters)}` });
+    parts.push({ text: `INVENTARIO DE IMPRESORAS REGISTRADAS:\n${JSON.stringify(compactPrinters)}` });
   }
   if (mensajeTexto) {
     parts.push({ text: `Mensaje técnico: ${mensajeTexto}` });
@@ -221,24 +416,60 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
   if (adjuntos && adjuntos.length > 0) {
     for (const adj of adjuntos) {
       if (adj.base64 && adj.mimeType) {
-        parts.push({
-          inlineData: {
-            mimeType: adj.mimeType,
-            data: adj.base64
-          }
-        });
+        parts.push({ inlineData: { mimeType: adj.mimeType, data: adj.base64 } });
       }
     }
   }
 
-  const rawText = await callGeminiAPI(parts);
+  // ── Tier 1: Try Gemini ──
+  console.log("🔄 Tier 1: Intentando Gemini...");
+  let rawText = await callGeminiAPI(parts);
+  if (rawText) {
+    providerUsed = "Gemini";
+  }
+
+  // ── Tier 2: Try OpenRouter ──
+  if (!rawText) {
+    console.log("🔄 Tier 2: Intentando OpenRouter...");
+    const userTextForOR = mensajeTexto
+      ? `Mensaje técnico: ${mensajeTexto}`
+      : "Analiza la imagen adjunta de una impresora Lexmark y extrae los datos de consumibles.";
+    rawText = await callOpenRouterAPI(systemPrompt, userTextForOR, adjuntos || []);
+    if (rawText) {
+      providerUsed = "OpenRouter";
+    }
+  }
+
+  // ── Tier 3: OCR Fallback ──
+  if (!rawText) {
+    console.log("🔄 Tier 3: Intentando OCR local (Tesseract.js)...");
+    const ocrResult = await performOCRFallback(adjuntos || []);
+    if (ocrResult) {
+      console.log("[OCR] ✓ Datos extraídos localmente:", ocrResult);
+      ocrResult._provider = "OCR (Tesseract.js) — Solo texto, sin IA";
+      return ocrResult;
+    }
+  }
+
+  // ── Parse response ──
+  if (!rawText) {
+    throw new Error(
+      "No se pudo procesar la solicitud. Verifica:\n" +
+      "• Gemini API Key (cuota agotada o no configurada)\n" +
+      "• OpenRouter API Key (no configurada)\n" +
+      "• OCR no pudo extraer datos de la imagen\n\n" +
+      "Configura al menos una API Key en Ajustes."
+    );
+  }
+
   const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-  
   try {
-    return JSON.parse(cleanJson);
+    const result = JSON.parse(cleanJson);
+    result._provider = providerUsed;
+    return result;
   } catch (e) {
-    console.error("Error parsing Gemini JSON response. Raw text:", rawText, e);
-    throw new Error("La respuesta de la IA no pudo ser parseada como JSON.");
+    console.error(`Error parsing ${providerUsed} JSON response. Raw text:`, rawText, e);
+    throw new Error(`La respuesta de ${providerUsed} no pudo ser parseada como JSON.`);
   }
 }
 
@@ -299,13 +530,27 @@ export async function analizarImportacionExcel(filasJson) {
     { text: `Datos de Excel en JSON: ${JSON.stringify(filasJson)}` }
   ];
 
-  const rawText = await callGeminiAPI(parts);
+  // Try Gemini first
+  let rawText = await callGeminiAPI(parts);
+
+  // Try OpenRouter if Gemini fails
+  if (!rawText) {
+    rawText = await callOpenRouterAPI(
+      promptSistema,
+      `Datos de Excel en JSON: ${JSON.stringify(filasJson)}`,
+      []
+    );
+  }
+
+  if (!rawText) {
+    throw new Error("No se pudo procesar el Excel. Ningún proveedor de IA respondió. Verifica tus API Keys en Ajustes.");
+  }
+
   const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-  
   try {
     return JSON.parse(cleanJson);
   } catch (e) {
-    console.error("Error parsing Gemini Excel JSON response. Raw text:", rawText, e);
+    console.error("Error parsing Excel JSON response. Raw text:", rawText, e);
     throw new Error("La respuesta de la IA para la importación no pudo ser parseada como JSON.");
   }
 }

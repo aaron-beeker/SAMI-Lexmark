@@ -115,7 +115,7 @@ const SEED_DATA = [
     "codigo_caso_cas": ""
   },
   {
-    "id_serie": "701625110FD85",
+    "id_serie": "701925110FD85",
     "modelo": "MX431ADN",
     "area_actual": "Otorrinolaringología 14",
     "observaciones": "Ok",

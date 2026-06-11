@@ -115,6 +115,7 @@ export default function App() {
 
   // Gemini API Key config
   const [apiKeyInput, setApiKeyInput] = useState(localStorage.getItem("sami_gemini_api_key") || "");
+  const [openRouterKeyInput, setOpenRouterKeyInput] = useState(localStorage.getItem("sami_openrouter_api_key") || "");
   const [showSettingsSaved, setShowSettingsSaved] = useState(false);
 
   // Auto scroll chat
@@ -321,10 +322,11 @@ export default function App() {
   ).length;
   const kpiMurTotal = printers.filter(p => p.ubicacion_entidad === "MUR").length;
 
-  // Save Settings API Key
+  // Save Settings API Keys
   const handleSaveApiKey = (e) => {
     e.preventDefault();
     localStorage.setItem("sami_gemini_api_key", apiKeyInput);
+    localStorage.setItem("sami_openrouter_api_key", openRouterKeyInput);
     setShowSettingsSaved(true);
     setTimeout(() => setShowSettingsSaved(false), 3000);
   };
@@ -455,44 +457,108 @@ export default function App() {
           fecha_lectura: new Date(),
           tipo_actualizacion: "Manual (Creado)"
         });
-
       } else {
         // Edit mode
         if (!selectedPrinter) return;
 
-        const updateData = {
-          modelo: editModelo,
-          area_actual: editArea,
-          codigo_caso_cas: editCasCode,
-          ip: editIp,
-          estado_funcionamiento: computedFuncionamiento,
-          estado_funcionamiento_manual: !editFuncionamientoAuto,
-          observaciones: editObservaciones,
-          ubicacion_entidad: editUbicacion,
-          "consumibles.toner_nivel": Number(editToner),
-          "consumibles.unidad_imagen_nivel": Number(editUnit),
-          "consumibles.mantenimiento_kit_nivel": Number(editMantenimiento),
-          "consumibles.ultima_lectura": new Date(),
-          prediccion: prediction
-        };
+        const oldId = selectedPrinter.id_serie.toUpperCase();
 
-        await updateDoc(docRef, updateData);
+        if (cleanId !== oldId) {
+          // Check for duplicate of the new serial
+          const exists = printers.some(p => p.id_serie.toUpperCase() === cleanId);
+          if (exists) {
+            alert(`El número de serie ${cleanId} ya está registrado en el inventario por otra impresora.`);
+            setSavingEdit(false);
+            return;
+          }
 
-        // Save to History subcollection
-        const historyColRef = collection(docRef, "historial_lecturas");
-        await addDoc(historyColRef, {
-          toner_nivel: Number(editToner),
-          unidad_imagen_nivel: Number(editUnit),
-          mantenimiento_kit_nivel: Number(editMantenimiento),
-          estado_funcionamiento: computedFuncionamiento,
-          estado_funcionamiento_manual: !editFuncionamientoAuto,
-          observaciones: editObservaciones,
-          codigo_caso_cas: editCasCode,
-          ubicacion_entidad: editUbicacion,
-          area_actual: editArea,
-          fecha_lectura: new Date(),
-          tipo_actualizacion: "Manual"
-        });
+          // Rename flow:
+          // 1. Create new printer document
+          const newPrinterDoc = {
+            modelo: editModelo,
+            area_actual: editArea,
+            codigo_caso_cas: editCasCode,
+            ip: editIp,
+            estado_funcionamiento: computedFuncionamiento,
+            estado_funcionamiento_manual: !editFuncionamientoAuto,
+            observaciones: editObservaciones || "",
+            ubicacion_entidad: editUbicacion,
+            consumibles: {
+              toner_nivel: Number(editToner),
+              unidad_imagen_nivel: Number(editUnit),
+              mantenimiento_kit_nivel: Number(editMantenimiento),
+              ultima_lectura: new Date()
+            },
+            prediccion: prediction
+          };
+
+          await setDoc(docRef, newPrinterDoc);
+
+          // 2. Migrate readings history
+          const oldHistoryRef = collection(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", oldId, "historial_lecturas");
+          const historySnap = await getDocs(oldHistoryRef);
+          const newHistoryRef = collection(docRef, "historial_lecturas");
+
+          for (const histDoc of historySnap.docs) {
+            await setDoc(doc(newHistoryRef, histDoc.id), histDoc.data());
+            await deleteDoc(doc(oldHistoryRef, histDoc.id));
+          }
+
+          // 3. Add current update to new history
+          await addDoc(newHistoryRef, {
+            toner_nivel: Number(editToner),
+            unidad_imagen_nivel: Number(editUnit),
+            mantenimiento_kit_nivel: Number(editMantenimiento),
+            estado_funcionamiento: computedFuncionamiento,
+            estado_funcionamiento_manual: !editFuncionamientoAuto,
+            observaciones: editObservaciones,
+            codigo_caso_cas: editCasCode,
+            ubicacion_entidad: editUbicacion,
+            area_actual: editArea,
+            fecha_lectura: new Date(),
+            tipo_actualizacion: "Manual (Editado S/N)"
+          });
+
+          // 4. Delete old document
+          const oldDocRef = doc(db, "artifacts", "sami-lexmark", "public", "data", "impresoras", oldId);
+          await deleteDoc(oldDocRef);
+
+        } else {
+          // Standard edit flow (no serial change)
+          const updateData = {
+            modelo: editModelo,
+            area_actual: editArea,
+            codigo_caso_cas: editCasCode,
+            ip: editIp,
+            estado_funcionamiento: computedFuncionamiento,
+            estado_funcionamiento_manual: !editFuncionamientoAuto,
+            observaciones: editObservaciones,
+            ubicacion_entidad: editUbicacion,
+            "consumibles.toner_nivel": Number(editToner),
+            "consumibles.unidad_imagen_nivel": Number(editUnit),
+            "consumibles.mantenimiento_kit_nivel": Number(editMantenimiento),
+            "consumibles.ultima_lectura": new Date(),
+            prediccion: prediction
+          };
+
+          await updateDoc(docRef, updateData);
+
+          // Save to History subcollection
+          const historyColRef = collection(docRef, "historial_lecturas");
+          await addDoc(historyColRef, {
+            toner_nivel: Number(editToner),
+            unidad_imagen_nivel: Number(editUnit),
+            mantenimiento_kit_nivel: Number(editMantenimiento),
+            estado_funcionamiento: computedFuncionamiento,
+            estado_funcionamiento_manual: !editFuncionamientoAuto,
+            observaciones: editObservaciones,
+            codigo_caso_cas: editCasCode,
+            ubicacion_entidad: editUbicacion,
+            area_actual: editArea,
+            fecha_lectura: new Date(),
+            tipo_actualizacion: "Manual"
+          });
+        }
       }
 
       // Save to General History
@@ -1337,17 +1403,17 @@ export default function App() {
 
     setIsChatLoading(true);
 
-    // Use first image for Gemini (API limitation: 1 image per call currently)
-    const firstImage = attachments.find(a => a.type === "image");
-    const firstPdf = attachments.find(a => a.type === "pdf");
-    const activeAttachment = firstImage || firstPdf;
+    // Build adjuntos array for Gemini Service
+    const adjuntosArr = attachments
+      .filter(a => a.base64 && a.mimeType)
+      .map(a => ({ base64: a.base64, mimeType: a.mimeType }));
 
     try {
-      // Call Gemini Service
+      // Call Gemini Service (text, adjuntos[], printers[])
       const result = await analizarEvidenciaSuministros(
         userMsgText,
-        activeAttachment ? activeAttachment.base64 : null,
-        activeAttachment ? activeAttachment.mimeType : null
+        adjuntosArr,
+        printers
       );
 
       console.log("Gemini parse result:", result);
@@ -1510,11 +1576,46 @@ export default function App() {
       let matchedPrinter = null;
 
       if (idSerieUpper) {
-        matchedPrinter = printers.find(p => p.id_serie.toUpperCase() === idSerieUpper);
+        const cleanInput = idSerieUpper.replace(/[^A-Z0-9]/g, "");
+        if (cleanInput) {
+          // 1. Exact match (comparing only alphanumeric characters)
+          matchedPrinter = printers.find(
+            p => p.id_serie.replace(/[^A-Z0-9]/g, "").toUpperCase() === cleanInput
+          );
 
-        // Fallback: match by suffix if the technician provided the last 4-6 characters
-        if (!matchedPrinter && idSerieUpper.length <= 6) {
-          matchedPrinter = printers.find(p => p.id_serie.toUpperCase().endsWith(idSerieUpper));
+          // 2. Suffix match: if input matches the end of a database printer
+          if (!matchedPrinter && cleanInput.length >= 4) {
+            matchedPrinter = printers.find(
+              p => p.id_serie.replace(/[^A-Z0-9]/g, "").toUpperCase().endsWith(cleanInput)
+            );
+          }
+
+          // 3. Typo/prefix mismatch fallback: check suffixes of length 6, 5, 4 of the input
+          if (!matchedPrinter) {
+            for (let len of [6, 5, 4]) {
+              if (cleanInput.length >= len) {
+                const suffix = cleanInput.slice(-len);
+                const match = printers.find(
+                  p => p.id_serie.replace(/[^A-Z0-9]/g, "").toUpperCase().endsWith(suffix)
+                );
+                if (match) {
+                  matchedPrinter = match;
+                  break;
+                }
+              }
+            }
+          }
+
+          // 4. Unique 3-char suffix fallback: if cleanInput ends with a 3-char suffix unique to one printer
+          if (!matchedPrinter && cleanInput.length >= 3) {
+            const suffix = cleanInput.slice(-3);
+            const candidates = printers.filter(
+              p => p.id_serie.replace(/[^A-Z0-9]/g, "").toUpperCase().endsWith(suffix)
+            );
+            if (candidates.length === 1) {
+              matchedPrinter = candidates[0];
+            }
+          }
         }
       }
 
@@ -1546,6 +1647,9 @@ export default function App() {
 
       // Determine action (crear, actualizar, eliminar)
       action = result.accion || (matchedPrinter ? "actualizar" : "crear");
+      if (action === "crear" && matchedPrinter) {
+        action = "actualizar";
+      }
 
       if (action === "eliminar") {
         if (!matchedPrinter) {
@@ -2225,107 +2329,100 @@ export default function App() {
                     ) : (
                       printers
                         .filter(p => getPrinterStatus(p) !== "Operativo")
-                        .slice(0, 3)
+                        .slice(0, 5)
                         .map((printer) => {
                           const status = getPrinterStatus(printer);
+                          const toner  = printer.consumibles?.toner_nivel ?? 100;
+                          const unit   = printer.consumibles?.unidad_imagen_nivel ?? 100;
+                          const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
+                          const isInSoporteAlert = (printer.area_actual || "").toLowerCase().includes("soporte");
+                          const isMurAlert = (printer.ubicacion_entidad || "Hospital").toUpperCase() === "MUR";
+
+                          const alertColor = status === "Inoperativo"
+                            ? { stripe: "bg-rose-500",   badge: "bg-rose-500/10 text-rose-600 border-rose-500/25",   icon: "cancel",  pulse: "animate-pulse-subtle", bg: "bg-rose-500/5 border-rose-500/20" }
+                            : { stripe: "bg-amber-500",  badge: "bg-amber-500/10 text-amber-600 border-amber-500/25", icon: "warning", pulse: "",                     bg: "bg-surface-container-lowest border-outline-variant" };
+
                           return (
                             <div
                               key={printer.id_serie}
                               onClick={() => handleOpenEditModal(printer)}
-                              className={`p-4 border rounded-2xl shadow-sm space-y-3 cursor-pointer hover:bg-surface-container-low transition-colors active:scale-[0.98] ${status === "Inoperativo"
-                                ? "bg-rose-500/5 border-rose-500/20"
-                                : "bg-surface-container-lowest border-outline-variant"
-                                }`}
+                              className={`flex border rounded-2xl shadow-sm overflow-hidden cursor-pointer hover:bg-surface-container-low active:scale-[0.98] transition-all ${alertColor.bg}`}
                             >
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <div className="flex gap-1.5 flex-wrap items-center">
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${status === "Inoperativo"
-                                      ? "bg-rose-500/10 text-rose-700"
-                                      : "bg-surface-variant text-outline"
-                                      }`}>
-                                      S/N: {printer.id_serie}
-                                    </span>
-                                    {printer.codigo_caso_cas && (
-                                      <span className="text-[10px] font-bold text-primary px-2 py-0.5 bg-primary-fixed rounded-md max-w-[120px] truncate" title={printer.codigo_caso_cas}>
-                                        CAS: {printer.codigo_caso_cas}
-                                      </span>
-                                    )}
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${(printer.ubicacion_entidad || "Hospital") === "Hospital"
-                                      ? "bg-primary-fixed/30 text-primary border border-primary/10"
-                                      : "bg-secondary-fixed/30 text-secondary border border-secondary/10"
-                                      }`}>
-                                      <span className="material-symbols-outlined text-[11px]">
-                                        {(printer.ubicacion_entidad || "Hospital") === "Hospital" ? "local_hospital" : "corporate_fare"}
-                                      </span>
-                                      {(printer.ubicacion_entidad || "Hospital") === "Hospital"
-                                        ? `Hospital (${(printer.area_actual || "").toLowerCase().includes("soporte") ? "En Soporte" : "En Servicio"})`
-                                        : "MUR"
-                                      }
-                                    </span>
-                                  </div>
-                                  <h3 className="font-bold text-base mt-1 text-on-background">{printer.modelo}</h3>
-                                  <p className="text-xs text-on-surface-variant">Área: {printer.area_actual}</p>
-                                </div>
+                              {/* Left status stripe */}
+                              <div className={`w-1.5 shrink-0 ${alertColor.stripe} ${alertColor.pulse}`} />
 
-                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${status === "Inoperativo"
-                                  ? "bg-rose-500/10 text-rose-600 border-rose-500/20 animate-pulse-subtle"
-                                  : "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                                  }`}>
-                                  <span className="material-symbols-outlined text-[11px]">
-                                    {status === "Inoperativo" ? "cancel" : "warning"}
+                              {/* Card body */}
+                              <div className="flex-1 p-3.5 space-y-3 min-w-0">
+
+                                {/* TOP ROW: Serial + Status badge */}
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                      <span className="material-symbols-outlined text-primary text-[14px]">tag</span>
+                                      <span className="font-mono font-black text-base text-on-background tracking-wider leading-none">
+                                        {printer.id_serie}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <span className={`px-2 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${alertColor.badge} ${alertColor.pulse}`}>
+                                    <span className="material-symbols-outlined text-[11px]">{alertColor.icon}</span>
+                                    {status}
                                   </span>
-                                  {status} {status !== "Inoperativo" ? ((printer.ubicacion_entidad || "Hospital") === "Hospital" && !(printer.area_actual || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
-                                </span>
-                              </div>
+                                </div>
 
-                              {/* Progress Indicators */}
-                              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/30">
-                                <div className="space-y-1">
-                                  <div className="flex justify-between items-center text-[10px] font-bold">
-                                    <span className="text-outline">% TÓNER</span>
-                                    <span className={printer.consumibles.toner_nivel <= 15 ? "text-error" : "text-outline"}>
-                                      {printer.consumibles.toner_nivel}%
+                                {/* MIDDLE ROW: Model, Area, IP */}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[11px] font-bold text-on-surface bg-surface-container-high px-2 py-0.5 rounded-lg border border-outline-variant/40">
+                                    {printer.modelo}
+                                  </span>
+                                  <span className="text-[11px] font-semibold text-on-surface-variant flex items-center gap-0.5">
+                                    <span className="material-symbols-outlined text-[12px] text-outline">location_on</span>
+                                    {printer.area_actual}
+                                  </span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${
+                                    isMurAlert
+                                      ? "bg-secondary-fixed/30 text-secondary border border-secondary/20"
+                                      : isInSoporteAlert
+                                        ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                        : "bg-primary-fixed/30 text-primary border border-primary/10"
+                                  }`}>
+                                    <span className="material-symbols-outlined text-[11px]">
+                                      {isMurAlert ? "corporate_fare" : isInSoporteAlert ? "build" : "local_hospital"}
                                     </span>
-                                  </div>
-                                  <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full ${printer.consumibles.toner_nivel <= 15 ? "bg-error" : "bg-primary"
-                                        }`}
-                                      style={{ width: `${printer.consumibles.toner_nivel}%` }}
-                                    ></div>
-                                  </div>
-                                </div>
-                                <div className="space-y-1">
-                                  <div className="flex justify-between items-center text-[10px] font-bold">
-                                    <span className="text-outline">% U. IMAG.</span>
-                                    <span className={printer.consumibles.unidad_imagen_nivel <= 15 ? "text-error" : "text-outline"}>
-                                      {printer.consumibles.unidad_imagen_nivel}%
+                                    {isMurAlert ? "MUR" : isInSoporteAlert ? "En Soporte" : "En Servicio"}
+                                  </span>
+                                  {printer.codigo_caso_cas && (
+                                    <span className="text-[10px] font-bold text-primary px-1.5 py-0.5 bg-primary-fixed rounded-md truncate max-w-[110px]" title={printer.codigo_caso_cas}>
+                                      CAS: {printer.codigo_caso_cas}
                                     </span>
-                                  </div>
-                                  <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full ${printer.consumibles.unidad_imagen_nivel <= 15 ? "bg-error" : "bg-secondary"
-                                        }`}
-                                      style={{ width: `${printer.consumibles.unidad_imagen_nivel}%` }}
-                                    ></div>
-                                  </div>
+                                  )}
                                 </div>
-                                <div className="space-y-1">
-                                  <div className="flex justify-between items-center text-[10px] font-bold">
-                                    <span className="text-outline">% KIT MANT.</span>
-                                    <span className={(printer.consumibles.mantenimiento_kit_nivel ?? 100) <= 15 ? "text-error" : "text-outline"}>
-                                      {printer.consumibles.mantenimiento_kit_nivel ?? 100}%
-                                    </span>
-                                  </div>
-                                  <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full ${(printer.consumibles.mantenimiento_kit_nivel ?? 100) <= 15 ? "bg-error" : "bg-tertiary"
-                                        }`}
-                                      style={{ width: `${printer.consumibles.mantenimiento_kit_nivel ?? 100}%` }}
-                                    ></div>
-                                  </div>
+
+                                {/* BOTTOM ROW: Consumable bars */}
+                                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/20">
+                                  {[
+                                    { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-error" : "bg-primary"   },
+                                    { label: "U.Img",  value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" },
+                                    { label: "Kit",    value: maint,  color: maint <= 15  ? "bg-error" : "bg-tertiary"  },
+                                  ].map(({ label, value, color }) => (
+                                    <div key={label} className="space-y-1">
+                                      <div className="flex justify-between items-center">
+                                        <span className={`text-[9px] font-bold uppercase tracking-wide ${value <= 15 ? "text-error" : "text-outline"}`}>{label}</span>
+                                        <span className={`text-[10px] font-black ${value <= 15 ? "text-error" : "text-on-surface"}`}>{value}%</span>
+                                      </div>
+                                      <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${value}%` }} />
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
+
+                                {/* Observations */}
+                                {printer.observaciones && (
+                                  <p className="text-[10px] italic text-on-surface-variant bg-surface-container-low px-2 py-1 rounded-lg border border-dashed border-outline-variant/30 leading-tight">
+                                    {printer.observaciones}
+                                  </p>
+                                )}
                               </div>
                             </div>
                           );
@@ -3497,22 +3594,52 @@ export default function App() {
             <form onSubmit={handleSaveApiKey} className="p-5 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-4">
               <h3 className="font-bold text-sm text-primary flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-base">api</span>
-                Clave API de Gemini
+                Claves API — Proveedores de IA
               </h3>
 
               <p className="text-xs text-on-surface-variant">
-                Dado que los reportes de campo y el análisis multimodal utilizan la API de Gemini, puedes configurar tu API Key aquí. Se almacena localmente en este navegador.
+                SAMI usa una cadena de proveedores: primero intenta <strong>Gemini</strong>, luego <strong>OpenRouter</strong> (modelos gratis), y como último recurso <strong>OCR local</strong> (sin API). Configura al menos una clave.
               </p>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-outline uppercase tracking-wider block">Gemini API Key</label>
+              {/* Gemini Key */}
+              <div className="space-y-1.5 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30">
+                <label className="text-[11px] font-bold text-outline uppercase tracking-wider flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px] text-primary">diamond</span>
+                  Gemini API Key (Google)
+                </label>
                 <input
                   type="password"
                   value={apiKeyInput}
                   onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder="Pegue su API Key aquí..."
-                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary text-sm font-mono"
+                  placeholder="AQ.Ab8RN6..."
+                  className="w-full bg-surface border-outline-variant rounded-lg p-2.5 focus:ring-primary focus:border-primary text-sm font-mono"
                 />
+                <p className="text-[10px] text-outline">Obtén una en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-primary underline">Google AI Studio</a></p>
+              </div>
+
+              {/* OpenRouter Key */}
+              <div className="space-y-1.5 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30">
+                <label className="text-[11px] font-bold text-outline uppercase tracking-wider flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px] text-secondary">route</span>
+                  OpenRouter API Key (Alternativa gratuita)
+                </label>
+                <input
+                  type="password"
+                  value={openRouterKeyInput}
+                  onChange={(e) => setOpenRouterKeyInput(e.target.value)}
+                  placeholder="sk-or-v1-..."
+                  className="w-full bg-surface border-outline-variant rounded-lg p-2.5 focus:ring-primary focus:border-primary text-sm font-mono"
+                />
+                <p className="text-[10px] text-outline">Gratis con modelos como Gemma y Llama. Regístrate en <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" className="text-primary underline">openrouter.ai/keys</a></p>
+              </div>
+
+              {/* OCR info */}
+              <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 flex items-start gap-2">
+                <span className="material-symbols-outlined text-tertiary text-base mt-0.5">document_scanner</span>
+                <div>
+                  <span className="text-[11px] font-bold text-outline uppercase tracking-wider block">OCR Local (Tesseract.js)</span>
+                  <p className="text-[10px] text-on-surface-variant">Siempre activo como último recurso. Extrae texto de las fotos directamente en tu navegador — sin internet ni API. Menos preciso que la IA pero funciona offline.</p>
+                </div>
               </div>
 
               {showSettingsSaved && (
@@ -3535,7 +3662,9 @@ export default function App() {
               <div className="text-xs space-y-1.5 text-on-surface-variant font-mono">
                 <p><strong>Proyecto:</strong> SAMI-Lexmark (Cayetano Heredia)</p>
                 <p><strong>Firestore DB:</strong> sami-lexmark (Cloud)</p>
-                <p><strong>Modelo IA:</strong> gemini-1.5-flash</p>
+                <p><strong>IA Primaria:</strong> Gemini 2.0 Flash</p>
+                <p><strong>IA Alternativa:</strong> OpenRouter (Free Tier)</p>
+                <p><strong>OCR Fallback:</strong> Tesseract.js (Local)</p>
                 <p><strong>Ciclo Autonomía:</strong> 45 Días corridos (Lineal)</p>
               </div>
             </div>
@@ -3613,7 +3742,7 @@ export default function App() {
             <div className="flex justify-between items-center mb-6 shrink-0">
               <div>
                 <h2 className="font-headline-lg text-lg text-primary font-bold">
-                  {isCreateMode ? "Registrar Nueva Impresora" : "Editar Lectura"}
+                  {isCreateMode ? "Registrar Nueva Impresora" : "Editar Impresora"}
                 </h2>
                 <div className="flex gap-2 mt-1 flex-wrap">
                   {!isCreateMode && selectedPrinter && (
@@ -3650,33 +3779,31 @@ export default function App() {
 
             {/* Fields */}
             <div className="space-y-4 mb-6 flex-grow">
-              {isCreateMode && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Número de Serie</label>
-                    <input
-                      type="text"
-                      value={editIdSerie}
-                      onChange={(e) => setEditIdSerie(e.target.value)}
-                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm uppercase"
-                      placeholder="Ej. 701924410D8X7"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Modelo</label>
-                    <select
-                      value={editModelo}
-                      onChange={(e) => setEditModelo(e.target.value)}
-                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
-                    >
-                      <option value="MX431ADN">MX431ADN</option>
-                      <option value="MX632ADWE">MX632ADWE</option>
-                      <option value="MX722ADHE">MX722ADHE</option>
-                    </select>
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Número de Serie</label>
+                  <input
+                    type="text"
+                    value={editIdSerie}
+                    onChange={(e) => setEditIdSerie(e.target.value)}
+                    className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm uppercase"
+                    placeholder="Ej. 701924410D8X7"
+                    required
+                  />
                 </div>
-              )}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Modelo</label>
+                  <select
+                    value={editModelo}
+                    onChange={(e) => setEditModelo(e.target.value)}
+                    className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
+                  >
+                    <option value="MX431ADN">MX431ADN</option>
+                    <option value="MX632ADWE">MX632ADWE</option>
+                    <option value="MX722ADHE">MX722ADHE</option>
+                  </select>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Área de Ubicación</label>
