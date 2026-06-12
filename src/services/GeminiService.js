@@ -4,7 +4,7 @@
 // ─── API Key Helpers ───
 
 function getGeminiKey() {
-  const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const envKey = (typeof import.meta.env !== "undefined" && import.meta.env) ? import.meta.env.VITE_GEMINI_API_KEY : "";
   if (envKey && envKey !== "TU_API_KEY_DE_GEMINI_AQUI" && envKey.trim() !== "") {
     return envKey;
   }
@@ -12,7 +12,7 @@ function getGeminiKey() {
 }
 
 function getOpenRouterKey() {
-  const envKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+  const envKey = (typeof import.meta.env !== "undefined" && import.meta.env) ? import.meta.env.VITE_OPENROUTER_API_KEY : "";
   if (envKey && envKey.trim() !== "") {
     return envKey;
   }
@@ -26,12 +26,17 @@ function buildSystemPrompt() {
     Eres el motor analítico y gestor de base de datos de SAMI-Lexmark para el Hospital Cayetano Heredia.
     Tu tarea es procesar el texto ingresado o la imagen de pantalla proporcionada para determinar la ACCIÓN requerida sobre el inventario de impresoras o el inventario de repuestos/stock.
     
+    ⚠️ REGLA DE CLASIFICACIÓN Y PROCESAMIENTO DE LOTES (EXTREMADAMENTE CRÍTICA):
+    - Si el mensaje o texto del usuario contiene una lista de DOS O MÁS impresoras (o dos o más números de serie), la acción es OBLIGATORIAMENTE "actualizar_multiples".
+    - Queda TOTALMENTE PROHIBIDO clasificar como "actualizar" si hay más de un dispositivo en la solicitud.
+    - Debes incluir en el arreglo "impresoras" ABSOLUTAMENTE TODOS los dispositivos y líneas proporcionados por el usuario. No omitas ninguno ni resumas el listado. Si el usuario ingresa 40 impresoras, debes procesar y devolver exactamente las 40 impresoras en el JSON de salida.
+    
     Identifica el tipo de operación:
     1. "crear": Si el usuario pide agregar, registrar, dar de alta, crear o añadir una nueva impresora.
     2. "eliminar": Si el usuario pide explícitamente eliminar, borrar, retirar o dar de baja una impresora.
-    3. "actualizar": Si se reporta un cambio de suministros, una lectura, mantenimiento, cambio de ubicación o observaciones para una impresora existente. REGLA CRÍTICA: Si la imagen muestra una página de "Estadísticas dispositivo" o "Device Statistics" de una impresora Lexmark (con número de serie, barras de progreso de consumibles, modelo, etc.), la acción es SIEMPRE "actualizar" — NUNCA "actualizar_stock". Debes extraer el número de serie del encabezado, los niveles porcentuales de las barras, y el modelo. Estos son los niveles de consumibles INSTALADOS en ESA impresora específica, NO son conteos de repuestos en almacén.
+    3. "actualizar": Si se reporta un cambio de suministros, una lectura, mantenimiento, cambio de ubicación o observaciones para una única impresora existente. REGLA CRÍTICA: Si la solicitud contiene más de una impresora o una lista de ellas, NUNCA uses "actualizar", usa "actualizar_multiples". Si la imagen muestra una página de "Estadísticas dispositivo" o "Device Statistics" de una impresora Lexmark (con número de serie, barras de progreso de consumibles, modelo, etc.), la acción es SIEMPRE "actualizar" — NUNCA "actualizar_stock". Debes extraer el número de serie del encabezado, los niveles porcentuales de las barras, y el modelo. Estos son los niveles de consumibles INSTALADOS en ESA impresora específica, NO son conteos de repuestos en almacén.
     4. "actualizar_stock": EXCLUSIVAMENTE cuando el usuario reporta explícitamente en TEXTO (no imagen de estadísticas de impresora) cuántas unidades de repuesto tiene disponibles en el almacén/depósito/hospital para distribución. Ejemplo: "Tenemos 5 tóners de 431 en el depósito y 2 en el hospital". NUNCA uses esta acción cuando la imagen muestra estadísticas de UNA impresora con su número de serie.
-    5. "actualizar_multiples": Si el usuario proporciona una lista, tabla, texto copiado, o reporte de múltiples impresoras con sus series/modelos/áreas/IPs para registrar o actualizar de forma masiva en lote.
+    5. "actualizar_multiples": SIEMPRE que el usuario proporcione una lista, tabla, texto copiado, o reporte de múltiples impresoras (dos o más dispositivos) con sus series, modelos, áreas, IPs o consumibles para registrar o actualizar de forma masiva en lote.
     6. "conversar": Si el usuario te hace una pregunta general, consulta sobre el estado, estadísticas o listado de impresoras del inventario (por ejemplo, cuáles están duplicadas por número de serie, modelo, IP, o área), te saluda, o te pide información detallada sobre la base de datos de impresoras proporcionada.
        - Identifica la cantidad que va para el "hospital" (para cambio rápido/cambio rápido) y para el "depósito" (almacén/abastecer).
        - Normaliza el modelo: si dice "431" asume "MX431ADN", si dice "632" asume "MX632ADWE", si dice "722" asume "MX722ADHE".
@@ -44,6 +49,13 @@ function buildSystemPrompt() {
  
     EXTRACCIÓN DE CONSUMIBLES:
     - Extrae el nivel de "toner_nivel" (porcentajes de cartucho negro), "unidad_imagen_nivel" (porcentajes de unidad de imagen) y "mantenimiento_kit_nivel" (porcentajes de kit mantenimiento) de la imagen o del texto. Si no aparecen explícitamente, ponlos como null.
+    - REGLA PARA REPORTES DE TEXTO Y LISTAS TABULADAS: Si el usuario proporciona una lista, reporte de texto o líneas tabuladas donde se listan impresoras con números al final sin etiqueta explícita (ej. "701924410D5VD 192.168.82.37 OEI Jefatura 21 0 36" o "7020443309GKC 58 45 54"), los últimos 3 números corresponden obligatoriamente a los niveles de consumibles en el siguiente exacto orden:
+      1. Primer número -> "toner_nivel" (Tóner, ej: 21 o 58).
+      2. Segundo número -> "mantenimiento_kit_nivel" (Kit de mantenimiento, ej: 0 o 45).
+      3. Tercer número -> "unidad_imagen_nivel" (Unidad de imagen, ej: 36 o 54).
+      ⚠️ ADVERTENCIA CRÍTICA: No inviertas el orden de estos números. Si en las líneas no se especifican IPs ni áreas, debes extraer "ip" y "area_actual" como null para evitar sobreescribir los datos reales de la base de datos.
+
+
     
     EXTRACCIÓN DE LA DIRECCIÓN IP:
     - Si se especifica una dirección IP válida (ej: "192.168.24.120"), colócala en el campo "ip".
@@ -122,7 +134,10 @@ function buildSystemPrompt() {
  
     REGLAS IMPORTANTES PARA EL CAMPO "detalle_caso":
     - Si el mensaje técnico, Excel o la imagen asocia un detalle, reporte o diagnóstico específico al código de caso CAS asignado, extrae esa descripción en el campo "detalle_caso".
-    - Si no se especifica un detalle para el caso, o si no hay un caso CAS asignado, pon "detalle_caso" como una cadena vacía "".
+    REGLA DE EDICIÓN Y FILTRADO PARCIAL Y COMPACTACIÓN (EXTREMADAMENTE IMPORTANTE):
+    - Si el usuario indica en su mensaje de texto o imagen actualizar ÚNICAMENTE ciertos campos o filas específicos (ej. "actualizar solo las direcciones IP", "actualizar solo las áreas", o "actualizar un número de serie específico"), debes extraer ÚNICAMENTE esos campos solicitados en el JSON de salida, y OMITIR por completo todas las demás claves (no las incluyas en el JSON, no les asignes null, simplemente no las declares). Esto evita sobrescribir los valores reales de la base de datos con valores predeterminados y ahorra tokens.
+    - Si el usuario te proporciona un documento PDF o reporte grande y te pide actualizar solo ciertos campos de esa lista (ej: "actualiza las IP de este PDF"), debes usar la acción "actualizar_multiples" y, para cada impresora de la lista, extraer solo los números de serie y las direcciones IP (dejando todo lo demás fuera del JSON de cada impresora, sin declararlo).
+    - En la acción "actualizar_multiples", está ESTRICTAMENTE PROHIBIDO incluir campos vacíos, nulos o no solicitados. Para cada impresora en el arreglo "impresoras", incluye ÚNICAMENTE "id_serie" y los campos específicos que tienen nuevos datos o que se actualizarán. El resto de las claves deben ser omitidas por completo para mantener la respuesta compacta y evitar la truncación del JSON.
 
     Especificaciones del JSON de respuesta según la acción:
  
@@ -149,17 +164,9 @@ function buildSystemPrompt() {
       "impresoras": [
         {
           "id_serie": "string",
-          "modelo": "string",
-          "area_actual": "string",
-          "ubicacion_entidad": "Hospital|MUR",
-          "ip": "string",
           "toner_nivel": number,
           "mantenimiento_kit_nivel": number,
-          "unidad_imagen_nivel": number,
-          "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
-          "observaciones": "string",
-          "codigo_caso_cas": "string",
-          "detalle_caso": "string"
+          "unidad_imagen_nivel": number
         }
       ]
     }
@@ -284,7 +291,7 @@ async function callOpenRouterAPI(systemPrompt, userText, adjuntos = []) {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: 1000
+          max_tokens: 4000
         })
       });
 
@@ -313,7 +320,7 @@ async function callOpenRouterAPI(systemPrompt, userText, adjuntos = []) {
 
 // ─── Provider 3: Tesseract.js OCR (Offline fallback) ───
 
-async function performOCRFallback(adjuntos = []) {
+async function performOCRFallback(adjuntos = [], impresorasRegistradas = []) {
   const imageAdj = adjuntos.find(a => a.mimeType?.startsWith("image/"));
   if (!imageAdj) return null;
 
@@ -327,18 +334,18 @@ async function performOCRFallback(adjuntos = []) {
     await worker.terminate();
 
     console.log("[OCR] Texto extraído:", text.substring(0, 500));
-    return parseOCRText(text);
+    return parseOCRText(text, impresorasRegistradas);
   } catch (error) {
     console.error("[OCR] Error:", error);
     return null;
   }
 }
 
-function parseOCRText(text) {
+function parseOCRText(text, impresorasRegistradas = []) {
   const lines = text.replace(/\r/g, "").split("\n").map(l => l.trim()).filter(Boolean);
   const fullText = lines.join(" ");
 
-  // Extract serial number (pattern: 10-13 alphanumeric chars)
+  // 1. Try to find serial number or suffix (4 chars)
   let serial = "";
   const serialPatterns = [
     /[Nn][uú]mero\s*de\s*serie[:\s]*([A-Za-z0-9]{10,15})/i,
@@ -348,54 +355,279 @@ function parseOCRText(text) {
   ];
   for (const pat of serialPatterns) {
     const m = fullText.match(pat);
-    if (m) { serial = m[1]; break; }
+    if (m) {
+      serial = m[1].toUpperCase();
+      break;
+    }
   }
 
-  // Extract model
-  let modelo = "MX431ADN";
+  let matchedPrinter = null;
+  if (!serial) {
+    // Look for any 4-char alphanumeric word
+    const words = fullText.split(/[\s,.:;]+/);
+    for (const word of words) {
+      if (/^[A-Za-z0-9]{4}$/.test(word)) {
+        const wordUpper = word.toUpperCase();
+        // Check if this matches the end of any registered printer's serial
+        const match = impresorasRegistradas.find(p => p.id_serie.toUpperCase().endsWith(wordUpper));
+        if (match) {
+          serial = match.id_serie;
+          matchedPrinter = match;
+          break;
+        }
+      }
+    }
+  } else {
+    matchedPrinter = impresorasRegistradas.find(
+      p => p.id_serie.toUpperCase() === serial.toUpperCase()
+    );
+  }
+
+  // Fallback by area name
+  if (!serial && impresorasRegistradas.length > 0) {
+    for (const printer of impresorasRegistradas) {
+      if (printer.area_actual) {
+        const areaClean = printer.area_actual.toLowerCase().trim();
+        if (areaClean.length > 3 && fullText.toLowerCase().includes(areaClean)) {
+          serial = printer.id_serie;
+          matchedPrinter = printer;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!serial) {
+    return null;
+  }
+
+  // 2. Extract action
+  let action = "actualizar";
+  if (/eliminar|borrar|dar\s+de\s+baja|retirar/i.test(fullText)) {
+    action = "eliminar";
+  } else if (/crear|registrar|agregar|añadir/i.test(fullText)) {
+    action = "crear";
+  }
+
+  // 3. Extract levels
+  let toner = null;
+  let unit = null;
+  let maint = null;
+
+  const tonerMatch = fullText.match(/(?:toner|tóner|cartucho|tinta)[^0-9%]*(\d{1,3})\s*%/i) ||
+                     fullText.match(/(\d{1,3})\s*%\s*[^0-9%]*(?:toner|tóner|cartucho|tinta)/i);
+  if (tonerMatch) toner = parseInt(tonerMatch[1]);
+
+  const unitMatch = fullText.match(/(?:unidad|imagen|tambor|drum|u\.img|u\s+img)[^0-9%]*(\d{1,3})\s*%/i) ||
+                    fullText.match(/(\d{1,3})\s*%\s*[^0-9]*(?:unidad|imagen|tambor|drum|u\.img|u\s+img)/i);
+  if (unitMatch) unit = parseInt(unitMatch[1]);
+
+  const maintMatch = fullText.match(/(?:mantenimiento|kit|fusi|mantenimiento_kit_nivel)[^0-9%]*(\d{1,3})\s*%/i) ||
+                     fullText.match(/(\d{1,3})\s*%\s*[^0-9]*(?:mantenimiento|kit|fusi|mantenimiento_kit_nivel)/i);
+  if (maintMatch) maint = parseInt(maintMatch[1]);
+
+  // Fallback printed stats page order: Toner, Kit, Unit
+  if (toner === null && unit === null && maint === null) {
+    const percentages = [];
+    const pctPattern = /(\d{1,3})\s*%/g;
+    let match;
+    while ((match = pctPattern.exec(fullText)) !== null) {
+      const val = parseInt(match[1]);
+      if (val >= 0 && val <= 100) percentages.push(val);
+    }
+    if (percentages.length > 0) toner = percentages[0];
+    if (percentages.length > 1) maint = percentages[1];
+    if (percentages.length > 2) unit = percentages[2];
+  }
+
+  // 4. Model, Area, Ubicación, IP
+  let modelo = matchedPrinter ? matchedPrinter.modelo : "MX431ADN";
   if (/mx\s*632/i.test(fullText)) modelo = "MX632ADWE";
   else if (/mx\s*722/i.test(fullText)) modelo = "MX722ADHE";
   else if (/mx\s*431/i.test(fullText)) modelo = "MX431ADN";
 
-  // Extract percentage levels from bars or text
-  // Look for "Nivel consumible" followed by percentage pattern "X%"
-  const percentages = [];
-  const pctPattern = /(\d{1,3})\s*%/g;
-  let match;
-  while ((match = pctPattern.exec(fullText)) !== null) {
-    const val = parseInt(match[1]);
-    if (val >= 0 && val <= 100) percentages.push(val);
+  let area = matchedPrinter ? matchedPrinter.area_actual : null;
+  const areaKeywords = ["pediatria", "otorrino", "emergencia", "admision", "uci", "soporte", "telecomunicaciones", "archivo"];
+  for (const kw of areaKeywords) {
+    if (fullText.toLowerCase().includes(kw)) {
+      area = kw.charAt(0).toUpperCase() + kw.slice(1);
+      break;
+    }
   }
 
-  // The printer stats page typically shows: Toner %, Kit %, Unidad Imagen % in that order
-  const toner = percentages.length > 0 ? percentages[0] : null;
-  const maint = percentages.length > 1 ? percentages[1] : null;
-  const unit = percentages.length > 2 ? percentages[2] : null;
+  let ubicacion = matchedPrinter ? matchedPrinter.ubicacion_entidad : "Hospital";
+  if (/mur/i.test(fullText)) ubicacion = "MUR";
 
-  if (!serial) {
-    return null; // Can't do anything without a serial
-  }
+  let ip = matchedPrinter ? matchedPrinter.ip : null;
+  if (/usb/i.test(fullText)) ip = "USB";
+  const ipMatch = fullText.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+  if (ipMatch) ip = ipMatch[0];
 
   // Determine status
   let estado = "Operativo";
-  if (toner === 0 || unit === 0 || maint === 0) estado = "Advertencia";
-  if ((toner !== null && toner <= 15) || (unit !== null && unit <= 15) || (maint !== null && maint <= 15)) estado = "Advertencia";
+  const levelIsLow = (toner !== null && toner <= 15) || (unit !== null && unit <= 15) || (maint !== null && maint <= 15);
+  const levelIsZero = toner === 0 || unit === 0 || maint === 0;
+  if (levelIsLow || levelIsZero) estado = "Advertencia";
 
   return {
-    accion: "actualizar",
+    accion: action,
     id_serie: serial,
     modelo,
-    area_actual: null,
-    ubicacion_entidad: "Hospital",
-    ip: null,
+    area_actual: area,
+    ubicacion_entidad: ubicacion,
+    ip: ip,
     toner_nivel: toner,
     unidad_imagen_nivel: unit,
     mantenimiento_kit_nivel: maint,
     estado_funcionamiento: estado,
     observaciones: "",
-    codigo_caso_cas: null,
-    _provider: "OCR (Tesseract.js)",
-    _ocr_raw: fullText.substring(0, 300)
+    codigo_caso_cas: matchedPrinter ? (matchedPrinter.codigo_caso_cas || "") : "",
+    detalle_caso: matchedPrinter ? (matchedPrinter.detalle_caso || "") : ""
+  };
+}
+
+// ─── Local Batch Text Parser (Offline) ───
+
+function parseLocalBatchText(text, impresorasRegistradas = []) {
+  if (!text || typeof text !== "string") return null;
+
+  const lines = text.replace(/\r/g, "").split("\n").map(l => l.trim()).filter(Boolean);
+
+  // Regex patterns
+  const serialRx = /\b([A-Z0-9]{10,15})\b/i;
+  const casRx = /\b(CAS-[\w]+-[\w]+)\b/i;
+  const ipRx = /\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/;
+  const usbRx = /\bUSB\b/i;
+
+  const parsedPrinters = [];
+
+  for (const line of lines) {
+    // Try to find a serial number in this line
+    const serialMatch = line.match(/\b(7\d{9,14})\b/) || line.match(serialRx);
+    if (!serialMatch) continue;
+
+    const rawSerial = serialMatch[1].toUpperCase();
+
+    // Validate: must be at least 10 chars, contain both letters and digits, and not be a common word
+    if (rawSerial.length < 10) continue;
+    if (!/\d/.test(rawSerial) || !/[A-Z]/i.test(rawSerial)) continue;
+
+    // Match against registered printers (exact or suffix)
+    let matchedPrinter = impresorasRegistradas.find(
+      p => p.id_serie.toUpperCase() === rawSerial
+    );
+    if (!matchedPrinter && rawSerial.length >= 4) {
+      matchedPrinter = impresorasRegistradas.find(
+        p => p.id_serie.toUpperCase().endsWith(rawSerial)
+      );
+    }
+
+    const printerData = {
+      id_serie: matchedPrinter ? matchedPrinter.id_serie : rawSerial
+    };
+
+    // ── Extract CAS code ──
+    const casMatch = line.match(casRx);
+    if (casMatch) {
+      printerData.codigo_caso_cas = casMatch[1];
+    }
+
+    // ── Extract IP ──
+    const ipMatch = line.match(ipRx);
+    if (ipMatch) {
+      printerData.ip = ipMatch[0];
+    } else if (usbRx.test(line)) {
+      printerData.ip = "USB";
+    }
+
+    // ── Build remaining text (remove serial, CAS, IP, USB) ──
+    let remaining = line;
+    remaining = remaining.replace(serialMatch[0], "");
+    if (casMatch) remaining = remaining.replace(casMatch[0], "");
+    if (ipMatch) remaining = remaining.replace(ipMatch[0], "");
+    remaining = remaining.replace(/\bUSB\b/gi, "");
+
+    // ── Extract trailing numbers for consumables ──
+    // Collect all standalone numbers between 0 and 100
+    const numTokens = [];
+    const numRx = /\b(\d{1,3})\b/g;
+    let nm;
+    const tmpRemaining = remaining;
+    while ((nm = numRx.exec(tmpRemaining)) !== null) {
+      const val = parseInt(nm[1]);
+      if (val >= 0 && val <= 100) {
+        numTokens.push({ val, raw: nm[0], index: nm.index });
+      }
+    }
+
+    if (numTokens.length >= 3) {
+      // Last 3 numbers → Tóner, Kit Mantenimiento, Unidad Imagen
+      const last3 = numTokens.slice(-3);
+      printerData.toner_nivel = last3[0].val;
+      printerData.mantenimiento_kit_nivel = last3[1].val;
+      printerData.unidad_imagen_nivel = last3[2].val;
+      // Remove those numbers from remaining (reverse order to preserve indices)
+      for (let i = last3.length - 1; i >= 0; i--) {
+        const idx = last3[i].index;
+        remaining = remaining.substring(0, idx) + remaining.substring(idx + last3[i].raw.length);
+      }
+    }
+
+    // ── Clean remaining text ──
+    remaining = remaining.replace(/[\t,;]+/g, " ").replace(/\s+/g, " ").trim();
+    // Remove leading/trailing dashes or dots
+    remaining = remaining.replace(/^[\-–—.]+\s*/, "").replace(/\s*[\-–—.]+$/, "").trim();
+
+    // ── Classify remaining text ──
+    if (remaining) {
+      // Normalize "SIN GARANTIA" → "SIN GARANTÍA"
+      const sinGarantiaRx = /sin\s+garant[ií]a/gi;
+      remaining = remaining.replace(sinGarantiaRx, "SIN GARANTÍA").trim();
+      const hasSinGarantia = /SIN GARANTÍA/i.test(remaining);
+
+      if (casMatch) {
+        // CAS present → remaining text is detalle_caso
+        printerData.detalle_caso = remaining;
+      } else if (hasSinGarantia) {
+        // No CAS, but has "SIN GARANTIA" → observation
+        printerData.observaciones = remaining;
+      } else if (/se\s+espera|visita|t[eé]cnic|inoperativ|atasco|falla|error|traba/i.test(remaining)) {
+        // Looks like an observation or case detail
+        printerData.detalle_caso = remaining;
+      } else {
+        // Could be an area name
+        printerData.area_actual = remaining;
+      }
+    }
+
+    parsedPrinters.push(printerData);
+  }
+
+  if (parsedPrinters.length === 0) return null;
+
+  if (parsedPrinters.length === 1) {
+    const p = parsedPrinters[0];
+    return {
+      accion: "actualizar",
+      id_serie: p.id_serie,
+      modelo: null,
+      area_actual: p.area_actual || null,
+      ubicacion_entidad: null,
+      ip: p.ip || null,
+      toner_nivel: p.toner_nivel !== undefined ? p.toner_nivel : null,
+      mantenimiento_kit_nivel: p.mantenimiento_kit_nivel !== undefined ? p.mantenimiento_kit_nivel : null,
+      unidad_imagen_nivel: p.unidad_imagen_nivel !== undefined ? p.unidad_imagen_nivel : null,
+      estado_funcionamiento: null,
+      observaciones: p.observaciones || "",
+      codigo_caso_cas: p.codigo_caso_cas || "",
+      detalle_caso: p.detalle_caso || ""
+    };
+  }
+
+  // Multiple printers → batch format
+  return {
+    accion: "actualizar_multiples",
+    impresoras: parsedPrinters
   };
 }
 
@@ -437,9 +669,20 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
   // ── Tier 2: Try OpenRouter ──
   if (!rawText) {
     console.log("🔄 Tier 2: Intentando OpenRouter...");
-    const userTextForOR = mensajeTexto
+    let userTextForOR = mensajeTexto
       ? `Mensaje técnico: ${mensajeTexto}`
       : "Analiza la imagen adjunta de una impresora Lexmark y extrae los datos de consumibles.";
+
+    if (impresorasRegistradas && impresorasRegistradas.length > 0) {
+      const compactPrinters = impresorasRegistradas.map(p => ({
+        sn: p.id_serie, modelo: p.modelo, area: p.area_actual,
+        entidad: p.ubicacion_entidad, ip: p.ip || "Desconectado",
+        estado: p.estado_funcionamiento, obs: p.observaciones || "",
+        caso: p.codigo_caso_cas || ""
+      }));
+      userTextForOR = `INVENTARIO DE IMPRESORAS REGISTRADAS:\n${JSON.stringify(compactPrinters)}\n\n${userTextForOR}`;
+    }
+
     rawText = await callOpenRouterAPI(systemPrompt, userTextForOR, adjuntos || []);
     if (rawText) {
       providerUsed = "OpenRouter";
@@ -449,11 +692,30 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
   // ── Tier 3: OCR Fallback ──
   if (!rawText) {
     console.log("🔄 Tier 3: Intentando OCR local (Tesseract.js)...");
-    const ocrResult = await performOCRFallback(adjuntos || []);
+    const ocrResult = await performOCRFallback(adjuntos || [], impresorasRegistradas);
     if (ocrResult) {
       console.log("[OCR] ✓ Datos extraídos localmente:", ocrResult);
-      ocrResult._provider = "OCR (Tesseract.js) — Solo texto, sin IA";
+      ocrResult._provider = "OCR Local (Tesseract.js) — Sin Conexión";
       return ocrResult;
+    }
+  }
+
+  // ── Tier 4: Local Text Parser Fallback ──
+  if (!rawText && mensajeTexto) {
+    console.log("🔄 Tier 4: Intentando Parser de Texto local...");
+    // Try structured batch parser first (handles CAS, IPs, consumables, areas, details)
+    const batchResult = parseLocalBatchText(mensajeTexto, impresorasRegistradas);
+    if (batchResult) {
+      console.log("[Local Parser] ✓ Datos extraídos (batch):", batchResult);
+      batchResult._provider = "Parser local (Offline)";
+      return batchResult;
+    }
+    // Fallback to legacy OCR text parser
+    const localResult = parseOCRText(mensajeTexto, impresorasRegistradas);
+    if (localResult) {
+      console.log("[Local Parser] ✓ Datos extraídos (OCR):", localResult);
+      localResult._provider = "Parser local (Offline)";
+      return localResult;
     }
   }
 
@@ -464,13 +726,16 @@ export async function analizarEvidenciaSuministros(mensajeTexto, adjuntos = [], 
       "• Gemini API Key (cuota agotada o no configurada)\n" +
       "• OpenRouter API Key (no configurada)\n" +
       "• OCR no pudo extraer datos de la imagen\n\n" +
-      "Configura al menos una API Key en Ajustes."
+      "Configura al menos una API Key en Ajustes o envía texto offline con número de serie."
     );
   }
 
-  const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+
   try {
-    const result = JSON.parse(cleanJson);
+    const result = extractJSON(rawText);
+    if (!result) {
+      throw new Error("No se pudo extraer un objeto JSON válido.");
+    }
     result._provider = providerUsed;
     return result;
   } catch (e) {
@@ -553,11 +818,116 @@ export async function analizarImportacionExcel(filasJson) {
     throw new Error("No se pudo procesar el Excel. Ningún proveedor de IA respondió. Verifica tus API Keys en Ajustes.");
   }
 
-  const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
   try {
-    return JSON.parse(cleanJson);
+    const result = extractJSON(rawText);
+    if (!result) {
+      throw new Error("No se pudo extraer un objeto JSON válido de la respuesta de importación.");
+    }
+    return result;
   } catch (e) {
     console.error("Error parsing Excel JSON response. Raw text:", rawText, e);
     throw new Error("La respuesta de la IA para la importación no pudo ser parseada como JSON.");
   }
 }
+
+// ─── JSON Extraction Helpers ───
+
+function isValidSchema(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  if ('accion' in obj) {
+    const validActions = ['crear', 'actualizar', 'eliminar', 'actualizar_stock', 'actualizar_multiples', 'conversar'];
+    if (validActions.includes(obj.accion)) return true;
+  }
+  if ('equipos_normalizados' in obj && 'reporte_resumen' in obj) {
+    return true;
+  }
+  return false;
+}
+
+function extractFromBraces(text) {
+  if (typeof text !== "string") return null;
+  const starts = [];
+  const ends = [];
+
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{' || text[i] === '[') {
+      starts.push({ char: text[i], index: i });
+    } else if (text[i] === '}' || text[i] === ']') {
+      ends.push({ char: text[i], index: i });
+    }
+  }
+
+  const validCandidates = [];
+  const maxStarts = starts.length > 100 ? starts.slice(0, 100) : starts;
+  const maxEnds = ends.length > 100 ? ends.slice(-100) : ends;
+
+  for (const start of maxStarts) {
+    const closeChar = start.char === '{' ? '}' : ']';
+    for (const end of maxEnds) {
+      if (end.char === closeChar && end.index > start.index) {
+        const candidateStr = text.substring(start.index, end.index + 1);
+        try {
+          const parsed = JSON.parse(candidateStr);
+          validCandidates.push({
+            parsed,
+            length: candidateStr.length,
+            isValid: isValidSchema(parsed)
+          });
+        } catch (e) {
+          // ignore invalid JSON
+        }
+      }
+    }
+  }
+
+  const validOnly = validCandidates.filter(c => c.isValid);
+  if (validOnly.length === 0) return null;
+
+  validOnly.sort((a, b) => b.length - a.length);
+
+  return validOnly[0].parsed;
+}
+
+function extractJSON(text) {
+  if (!text) return null;
+  if (typeof text !== "string") return text;
+
+  // 1. Direct try
+  try {
+    const trimmed = text.trim();
+    const parsed = JSON.parse(trimmed);
+    if (isValidSchema(parsed)) return parsed;
+  } catch (e) {}
+
+  // 2. Markdown block extraction
+  const mdRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+  let match;
+  const mdCandidates = [];
+  mdRegex.lastIndex = 0;
+  while ((match = mdRegex.exec(text)) !== null) {
+    mdCandidates.push(match[1].trim());
+  }
+
+  for (const cand of mdCandidates) {
+    try {
+      const parsed = JSON.parse(cand);
+      if (isValidSchema(parsed)) return parsed;
+    } catch (e) {
+      const parsed = extractFromBraces(cand);
+      if (parsed && isValidSchema(parsed)) return parsed;
+    }
+  }
+
+  // 3. Fallback to braces in the entire text
+  const braceParsed = extractFromBraces(text);
+  if (braceParsed) return braceParsed;
+
+  // 4. Last resort fallback
+  try {
+    const parsed = JSON.parse(text.replace(/```json/g, "").replace(/```/g, "").trim());
+    return parsed;
+  } catch (e) {}
+
+  return null;
+}
+
