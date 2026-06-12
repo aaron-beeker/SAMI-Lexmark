@@ -35,7 +35,8 @@ const SEED_DATA = [
     "modelo": "MX431ADN",
     "area_actual": "Soporte",
     "observaciones": "Inoperativa, falta kit de rodillos",
-    "codigo_caso_cas": "CAS-6013278-V6N2C5"
+    "codigo_caso_cas": "CAS-6013278-V6N2C5",
+    "detalle_caso": "Falta kit de rodillos para reparación."
   },
   {
     "id_serie": "701925110FD86",
@@ -77,14 +78,16 @@ const SEED_DATA = [
     "modelo": "MX431ADN",
     "area_actual": "Soporte",
     "observaciones": "Reparada",
-    "codigo_caso_cas": "CAS-6013422-F1G8P8"
+    "codigo_caso_cas": "CAS-6013422-F1G8P8",
+    "detalle_caso": "Caso resuelto, reparación exitosa."
   },
   {
     "id_serie": "701925110FD89",
     "modelo": "MX431ADN",
     "area_actual": "Soporte",
     "observaciones": "Operativa 02/06/2026. Necesita cambio de piezas",
-    "codigo_caso_cas": "CAS-6013525-W3C7M0"
+    "codigo_caso_cas": "CAS-6013525-W3C7M0",
+    "detalle_caso": "En revisión para cambio de repuestos."
   },
   {
     "id_serie": "701924410D8XD",
@@ -243,6 +246,7 @@ export async function seedPrintersIfEmpty(db) {
         modelo: printer.modelo,
         area_actual: printer.area_actual,
         codigo_caso_cas: printer.codigo_caso_cas || "",
+        detalle_caso: printer.detalle_caso || "",
         estado_funcionamiento: estadoFuncionamiento,
         observaciones: printer.observaciones || "",
         ubicacion_entidad: ubicacion, // 'Hospital' or 'MUR'

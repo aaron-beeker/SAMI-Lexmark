@@ -57,6 +57,7 @@ export default function App() {
 
   const [editObservaciones, setEditObservaciones] = useState("");
   const [editCasCode, setEditCasCode] = useState("");
+  const [editDetalleCaso, setEditDetalleCaso] = useState("");
   const [editUbicacion, setEditUbicacion] = useState("Hospital");
   const [editFuncionamiento, setEditFuncionamiento] = useState("Operativo");
   const [editIp, setEditIp] = useState("");
@@ -347,6 +348,7 @@ export default function App() {
     const obsVal = printer.observaciones || "";
     setEditObservaciones(obsVal);
     setEditCasCode(printer.codigo_caso_cas || "");
+    setEditDetalleCaso(printer.detalle_caso || "");
     setEditUbicacion(printer.ubicacion_entidad || "Hospital");
     setEditIp(printer.ip || "");
 
@@ -372,6 +374,7 @@ export default function App() {
 
     setEditObservaciones("");
     setEditCasCode("");
+    setEditDetalleCaso("");
     setEditUbicacion("Hospital");
     setEditIp("");
     setEditFuncionamiento("Operativo");
@@ -426,6 +429,7 @@ export default function App() {
           modelo: editModelo,
           area_actual: editArea,
           codigo_caso_cas: editCasCode,
+          detalle_caso: editDetalleCaso || "",
           ip: editIp,
           estado_funcionamiento: computedFuncionamiento,
           estado_funcionamiento_manual: !editFuncionamientoAuto,
@@ -452,6 +456,7 @@ export default function App() {
           estado_funcionamiento_manual: !editFuncionamientoAuto,
           observaciones: printerDoc.observaciones,
           codigo_caso_cas: editCasCode,
+          detalle_caso: editDetalleCaso || "",
           ubicacion_entidad: editUbicacion,
           area_actual: editArea,
           fecha_lectura: new Date(),
@@ -478,6 +483,7 @@ export default function App() {
             modelo: editModelo,
             area_actual: editArea,
             codigo_caso_cas: editCasCode,
+            detalle_caso: editDetalleCaso || "",
             ip: editIp,
             estado_funcionamiento: computedFuncionamiento,
             estado_funcionamiento_manual: !editFuncionamientoAuto,
@@ -513,6 +519,7 @@ export default function App() {
             estado_funcionamiento_manual: !editFuncionamientoAuto,
             observaciones: editObservaciones,
             codigo_caso_cas: editCasCode,
+            detalle_caso: editDetalleCaso || "",
             ubicacion_entidad: editUbicacion,
             area_actual: editArea,
             fecha_lectura: new Date(),
@@ -529,6 +536,7 @@ export default function App() {
             modelo: editModelo,
             area_actual: editArea,
             codigo_caso_cas: editCasCode,
+            detalle_caso: editDetalleCaso || "",
             ip: editIp,
             estado_funcionamiento: computedFuncionamiento,
             estado_funcionamiento_manual: !editFuncionamientoAuto,
@@ -553,6 +561,7 @@ export default function App() {
             estado_funcionamiento_manual: !editFuncionamientoAuto,
             observaciones: editObservaciones,
             codigo_caso_cas: editCasCode,
+            detalle_caso: editDetalleCaso || "",
             ubicacion_entidad: editUbicacion,
             area_actual: editArea,
             fecha_lectura: new Date(),
@@ -575,6 +584,7 @@ export default function App() {
         estado_funcionamiento: computedFuncionamiento,
         observaciones: editObservaciones || "",
         codigo_caso_cas: editCasCode,
+        detalle_caso: editDetalleCaso || "",
         tipo_actualizacion: isCreateMode ? "Manual (Creado)" : "Manual",
         timestamp: new Date()
       });
@@ -648,6 +658,7 @@ export default function App() {
         ip: ipVal,
         observaciones: obsVal,
         codigo_caso_cas: editingRowData.codigo_caso_cas || "",
+        detalle_caso: editingRowData.detalle_caso || "",
         estado_funcionamiento: computedFuncionamiento,
         "consumibles.toner_nivel": tonerVal,
         "consumibles.unidad_imagen_nivel": unitVal,
@@ -667,6 +678,7 @@ export default function App() {
         estado_funcionamiento: computedFuncionamiento,
         observaciones: obsVal,
         codigo_caso_cas: editingRowData.codigo_caso_cas || "",
+        detalle_caso: editingRowData.detalle_caso || "",
         area_actual: areaVal,
         fecha_lectura: new Date(),
         tipo_actualizacion: "Edición Rápida Tabla"
@@ -685,6 +697,7 @@ export default function App() {
         estado_funcionamiento: computedFuncionamiento,
         observaciones: obsVal,
         codigo_caso_cas: editingRowData.codigo_caso_cas || "",
+        detalle_caso: editingRowData.detalle_caso || "",
         tipo_actualizacion: "Edición Rápida Tabla",
         timestamp: new Date()
       });
@@ -1083,6 +1096,7 @@ export default function App() {
             const colIdxUnit = findColIndex(["unidad", "imagen", "unidad_imagen_nivel", "unidad de imagen", "unidad nivel", "% unidad", "% imagen", "drum"]);
             const colIdxMaint = findColIndex(["mantenimiento", "kit", "fuser", "rodillos", "% kit", "% mantenimiento"]);
             const colIdxCas = findColIndex(["cas", "caso", "codigo_caso_cas", "código de caso", "codigo de caso", "incidente", "ticket"]);
+            const colIdxDetalleCaso = findColIndex(["detalle_caso", "detalle del caso", "detalle caso", "detalle_del_caso", "diagnostico", "diagnóstico", "diagnosticos", "diagnósticos"]);
             const colIdxObs = findColIndex(["observaciones", "detalles", "comentarios", "obs", "observacion", "comentario"]);
 
             for (let j = headerRowIndex + 1; j < rawArrays.length; j++) {
@@ -1136,6 +1150,7 @@ export default function App() {
               const maintVal = maintValRaw !== undefined ? Number(maintValRaw.replace("%", "").trim()) : null;
 
               const casVal = valAt(colIdxCas) || "";
+              const detalleCasoVal = valAt(colIdxDetalleCaso) || "";
               const obsVal = valAt(colIdxObs) || "";
 
               allParsedRows.push({
@@ -1147,6 +1162,7 @@ export default function App() {
                 unidad_imagen_nivel: unitVal,
                 mantenimiento_kit_nivel: maintVal,
                 codigo_caso_cas: casVal,
+                detalle_caso: detalleCasoVal,
                 observaciones: obsVal
               });
             }
@@ -1230,6 +1246,7 @@ export default function App() {
         const modelVal = eq.modelo || (matched ? matched.modelo : "MX431ADN");
         const areaVal = eq.area_actual || (matched ? matched.area_actual : "Soporte");
         const casVal = eq.codigo_caso_cas !== undefined && eq.codigo_caso_cas !== "" ? eq.codigo_caso_cas : (matched ? matched.codigo_caso_cas : "");
+        const detalleCasoVal = eq.detalle_caso !== undefined && eq.detalle_caso !== "" ? eq.detalle_caso : (matched ? (matched.detalle_caso || "") : "");
         const obsVal = eq.observaciones !== undefined && eq.observaciones !== "" ? eq.observaciones : (matched && matched.observaciones ? matched.observaciones : "");
         const entityVal = eq.ubicacion_entidad || (matched ? matched.ubicacion_entidad : "Hospital");
 
@@ -1241,6 +1258,7 @@ export default function App() {
           modelo: modelVal,
           area_actual: areaVal,
           codigo_caso_cas: casVal,
+          detalle_caso: detalleCasoVal,
           estado_funcionamiento: computedFuncionamiento,
           observaciones: obsVal,
           ubicacion_entidad: entityVal,
@@ -1263,6 +1281,7 @@ export default function App() {
           estado_funcionamiento: computedFuncionamiento,
           observaciones: printerDoc.observaciones,
           codigo_caso_cas: printerDoc.codigo_caso_cas,
+          detalle_caso: printerDoc.detalle_caso,
           ubicacion_entidad: printerDoc.ubicacion_entidad,
           area_actual: areaVal,
           fecha_lectura: new Date(),
@@ -1281,6 +1300,7 @@ export default function App() {
           estado_funcionamiento: computedFuncionamiento,
           observaciones: printerDoc.observaciones || "",
           codigo_caso_cas: printerDoc.codigo_caso_cas || "",
+          detalle_caso: printerDoc.detalle_caso || "",
           tipo_actualizacion: "Importación Excel (IA)",
           timestamp: new Date()
         });
@@ -1706,6 +1726,7 @@ export default function App() {
           modelo: result.modelo || "MX431ADN",
           area_actual: result.area_actual || "Soporte",
           codigo_caso_cas: result.codigo_caso_cas || "",
+          detalle_caso: result.detalle_caso || "",
           estado_funcionamiento: computedFuncionamiento,
           observaciones: result.observaciones || "",
           ubicacion_entidad: result.ubicacion_entidad || "Hospital",
@@ -1729,6 +1750,7 @@ export default function App() {
           estado_funcionamiento: computedFuncionamiento,
           observaciones: newPrinter.observaciones,
           codigo_caso_cas: newPrinter.codigo_caso_cas,
+          detalle_caso: newPrinter.detalle_caso,
           ubicacion_entidad: newPrinter.ubicacion_entidad,
           area_actual: newPrinter.area_actual,
           fecha_lectura: new Date(),
@@ -1748,6 +1770,7 @@ export default function App() {
           estado_funcionamiento: computedFuncionamiento,
           observaciones: newPrinter.observaciones,
           codigo_caso_cas: newPrinter.codigo_caso_cas,
+          detalle_caso: newPrinter.detalle_caso,
           tipo_actualizacion: "Gemini AI (Creado)",
           timestamp: new Date()
         });
@@ -1786,6 +1809,7 @@ export default function App() {
           modelo: result.modelo || "MX431ADN",
           area_actual: result.area_actual || "Soporte",
           codigo_caso_cas: result.codigo_caso_cas || "",
+          detalle_caso: result.detalle_caso || "",
           estado_funcionamiento: computedFuncionamiento,
           observaciones: result.observaciones || "",
           ubicacion_entidad: result.ubicacion_entidad || "Hospital",
@@ -1809,6 +1833,7 @@ export default function App() {
           estado_funcionamiento: computedFuncionamiento,
           observaciones: newPrinter.observaciones,
           codigo_caso_cas: newPrinter.codigo_caso_cas,
+          detalle_caso: newPrinter.detalle_caso,
           ubicacion_entidad: newPrinter.ubicacion_entidad,
           area_actual: newPrinter.area_actual,
           fecha_lectura: new Date(),
@@ -1828,6 +1853,7 @@ export default function App() {
           estado_funcionamiento: computedFuncionamiento,
           observaciones: newPrinter.observaciones,
           codigo_caso_cas: newPrinter.codigo_caso_cas,
+          detalle_caso: newPrinter.detalle_caso,
           tipo_actualizacion: "Gemini AI (Auto-creado)",
           timestamp: new Date()
         });
@@ -1873,6 +1899,7 @@ export default function App() {
           area_actual: result.area_actual || matchedPrinter.area_actual,
           ubicacion_entidad: result.ubicacion_entidad || matchedPrinter.ubicacion_entidad || "Hospital",
           codigo_caso_cas: result.codigo_caso_cas !== undefined ? result.codigo_caso_cas : matchedPrinter.codigo_caso_cas || "",
+          detalle_caso: result.detalle_caso !== undefined ? result.detalle_caso : matchedPrinter.detalle_caso || "",
           estado_funcionamiento: computedFuncionamiento,
           observaciones: obsVal,
           "consumibles.toner_nivel": tonerVal,
@@ -1893,6 +1920,7 @@ export default function App() {
           estado_funcionamiento: computedFuncionamiento,
           observaciones: updateData.observaciones,
           codigo_caso_cas: updateData.codigo_caso_cas,
+          detalle_caso: updateData.detalle_caso,
           ubicacion_entidad: updateData.ubicacion_entidad,
           area_actual: updateData.area_actual,
           fecha_lectura: new Date(),
@@ -1912,6 +1940,7 @@ export default function App() {
           estado_funcionamiento: computedFuncionamiento,
           observaciones: updateData.observaciones || "",
           codigo_caso_cas: updateData.codigo_caso_cas || "",
+          detalle_caso: updateData.detalle_caso || "",
           tipo_actualizacion: "Gemini AI",
           timestamp: new Date()
         });
@@ -2392,9 +2421,16 @@ export default function App() {
                                     {isMurAlert ? "MUR" : isInSoporteAlert ? "En Soporte" : "En Servicio"}
                                   </span>
                                   {printer.codigo_caso_cas && (
-                                    <span className="text-[10px] font-bold text-primary px-1.5 py-0.5 bg-primary-fixed rounded-md truncate max-w-[110px]" title={printer.codigo_caso_cas}>
-                                      CAS: {printer.codigo_caso_cas}
-                                    </span>
+                                    <div className="flex flex-col gap-0.5 max-w-[120px]">
+                                      <span className="text-[10px] font-bold text-primary px-1.5 py-0.5 bg-primary-fixed rounded-md truncate block w-max" title={printer.codigo_caso_cas}>
+                                        CAS: {printer.codigo_caso_cas}
+                                      </span>
+                                      {printer.detalle_caso && (
+                                        <span className="text-[9px] text-slate-500 italic truncate" title={printer.detalle_caso}>
+                                          {printer.detalle_caso}
+                                        </span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
 
@@ -2402,8 +2438,8 @@ export default function App() {
                                 <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/20">
                                   {[
                                     { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-error" : "bg-primary"   },
-                                    { label: "U.Img",  value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" },
                                     { label: "Kit",    value: maint,  color: maint <= 15  ? "bg-error" : "bg-tertiary"  },
+                                    { label: "U.Img",  value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" },
                                   ].map(({ label, value, color }) => (
                                     <div key={label} className="space-y-1">
                                       <div className="flex justify-between items-center">
@@ -2510,43 +2546,6 @@ export default function App() {
                               </div>
                             </div>
 
-                            {/* Image Unit Stock Card */}
-                            <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
-                              <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Unid. Imagen</span>
-                              <div className="flex justify-between items-center text-[11px]">
-                                <span className="text-on-surface-variant">Hosp:</span>
-                                <div className="flex items-center gap-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDecrementStockClick(item.id, "unidad_hospital", item.unidad_hospital || 0)}
-                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                                  >-</button>
-                                  <span className="font-bold min-w-[12px] text-center">{item.unidad_hospital ?? 0}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateManualStock(item.id, "unidad_hospital", (item.unidad_hospital || 0) + 1)}
-                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                                  >+</button>
-                                </div>
-                              </div>
-                              <div className="flex justify-between items-center text-[11px]">
-                                <span className="text-on-surface-variant">Dep:</span>
-                                <div className="flex items-center gap-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDecrementStockClick(item.id, "unidad_deposito", item.unidad_deposito || 0)}
-                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                                  >-</button>
-                                  <span className="font-bold min-w-[12px] text-center text-secondary">{item.unidad_deposito ?? 0}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => updateManualStock(item.id, "unidad_deposito", (item.unidad_deposito || 0) + 1)}
-                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                                  >+</button>
-                                </div>
-                              </div>
-                            </div>
-
                             {/* Maintenance Kit Stock Card */}
                             <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
                               <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Kit Mant.</span>
@@ -2578,6 +2577,43 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={() => updateManualStock(item.id, "mantenimiento_deposito", (item.mantenimiento_deposito || 0) + 1)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >+</button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Image Unit Stock Card */}
+                            <div className="bg-surface-container-low p-2 rounded-xl border border-outline-variant/20 space-y-1.5">
+                              <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Unid. Imagen</span>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-on-surface-variant">Hosp:</span>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrementStockClick(item.id, "unidad_hospital", item.unidad_hospital || 0)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >-</button>
+                                  <span className="font-bold min-w-[12px] text-center">{item.unidad_hospital ?? 0}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualStock(item.id, "unidad_hospital", (item.unidad_hospital || 0) + 1)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >+</button>
+                                </div>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-on-surface-variant">Dep:</span>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrementStockClick(item.id, "unidad_deposito", item.unidad_deposito || 0)}
+                                    className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+                                  >-</button>
+                                  <span className="font-bold min-w-[12px] text-center text-secondary">{item.unidad_deposito ?? 0}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualStock(item.id, "unidad_deposito", (item.unidad_deposito || 0) + 1)}
                                     className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
                                   >+</button>
                                 </div>
@@ -2834,9 +2870,16 @@ export default function App() {
 
                               {/* CAS code if exists */}
                               {printer.codigo_caso_cas && (
-                                <span className="text-[10px] font-bold text-primary px-1.5 py-0.5 bg-primary-fixed rounded-md truncate max-w-[110px]" title={printer.codigo_caso_cas}>
-                                  CAS: {printer.codigo_caso_cas}
-                                </span>
+                                <div className="flex flex-col gap-0.5 max-w-[120px]">
+                                  <span className="text-[10px] font-bold text-primary px-1.5 py-0.5 bg-primary-fixed rounded-md truncate block w-max" title={printer.codigo_caso_cas}>
+                                    CAS: {printer.codigo_caso_cas}
+                                  </span>
+                                  {printer.detalle_caso && (
+                                    <span className="text-[9px] text-slate-500 italic truncate" title={printer.detalle_caso}>
+                                      {printer.detalle_caso}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                             </div>
 
@@ -2844,8 +2887,8 @@ export default function App() {
                             <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/20">
                               {[
                                 { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-error" : "bg-primary"   },
-                                { label: "U.Img",  value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" },
                                 { label: "Kit",    value: maint,  color: maint <= 15  ? "bg-error" : "bg-tertiary"  },
+                                { label: "U.Img",  value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" },
                               ].map(({ label, value, color }) => (
                                 <div key={label} className="space-y-1">
                                   <div className="flex justify-between items-center">
@@ -2877,16 +2920,17 @@ export default function App() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse min-w-[1150px] text-xs animate-fade-in">
                         <thead>
-                          <tr className="bg-slate-50/80 border-b border-outline-variant/80 text-[10px] font-black text-slate-500 tracking-widest select-none uppercase">
-                            <th className="px-5 py-4">IMPRESORA/MODELO</th>
-                            <th className="px-5 py-4">SERIE</th>
-                            <th className="px-5 py-4">IP</th>
-                            <th className="px-5 py-4">ÁREA</th>
-                            <th className="px-5 py-4">ESTADO</th>
-                            <th className="px-5 py-4">CONSUMIBLES</th>
-                            <th className="px-5 py-4">OBSERVACIONES</th>
-                            <th className="px-5 py-4">CÓDIGO DE CASO</th>
-                            <th className="px-5 py-4 text-center">ACCIONES</th>
+                          <tr className="bg-slate-100 border-b-2 border-slate-300 text-[11px] font-bold text-slate-700 select-none uppercase">
+                            <th className="px-4 py-3 border-r border-slate-200">IMPRESORA/MODELO</th>
+                            <th className="px-4 py-3 border-r border-slate-200">SERIE</th>
+                            <th className="px-4 py-3 border-r border-slate-200">IP / USB</th>
+                            <th className="px-4 py-3 border-r border-slate-200">ÁREA</th>
+                            <th className="px-4 py-3 border-r border-slate-200">CONSUMIBLES</th>
+                            <th className="px-4 py-3 border-r border-slate-200">OBSERVACIONES</th>
+                            <th className="px-4 py-3 border-r border-slate-200">ESTADO</th>
+                            <th className="px-4 py-3 border-r border-slate-200">CASO ASIGNADO</th>
+                            <th className="px-4 py-3 border-r border-slate-200">DETALLES DEL CASO</th>
+                            <th className="px-4 py-3 text-center">ACCIONES</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2906,12 +2950,12 @@ export default function App() {
                               <tr
                                 key={printer.id_serie}
                                 onDoubleClick={() => !isEditing && handleStartRowEdit(printer)}
-                                className={`group hover:bg-slate-50/50 transition-colors border-b border-outline-variant/30 ${
+                                className={`group hover:bg-slate-50/50 transition-colors border-b border-slate-200 ${
                                   isEditing ? "bg-primary-fixed/10" : "even:bg-slate-50/10"
                                 }`}
                               >
                                 {/* IMPRESORA/MODELO */}
-                                <td className="px-5 py-3 align-middle">
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
                                   {isEditing ? (
                                     <select
                                       value={editingRowData.modelo || "MX431ADN"}
@@ -2937,7 +2981,7 @@ export default function App() {
                                 </td>
 
                                 {/* SERIE */}
-                                <td className="px-5 py-3 align-middle">
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
                                   <div className="flex items-center gap-1.5 group/serial">
                                     <span className="font-mono font-bold bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded border border-slate-200/80 text-[11px] select-all">
                                       {printer.id_serie}
@@ -2955,8 +2999,8 @@ export default function App() {
                                   </div>
                                 </td>
 
-                                {/* IP */}
-                                <td className="px-5 py-3 align-middle">
+                                {/* IP / USB */}
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
                                   {isEditing ? (
                                     <input
                                       type="text"
@@ -2991,7 +3035,7 @@ export default function App() {
                                 </td>
 
                                 {/* ÁREA */}
-                                <td className="px-5 py-3 align-middle">
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
                                   {isEditing ? (
                                     <input
                                       type="text"
@@ -3007,8 +3051,130 @@ export default function App() {
                                   )}
                                 </td>
 
+                                {/* CONSUMIBLES */}
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
+                                  {isEditing ? (
+                                    <div className="flex gap-1.5 min-w-[150px] pt-1">
+                                      <div className="relative flex-1" title="Tóner %">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={editingRowData.consumibles?.toner_nivel ?? 100}
+                                          onChange={(e) => handleRowNestedDataChange("consumibles", "toner_nivel", Number(e.target.value))}
+                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
+                                          placeholder="T"
+                                        />
+                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">T</span>
+                                      </div>
+                                      <div className="relative flex-1" title="Kit Mantenimiento %">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={editingRowData.consumibles?.mantenimiento_kit_nivel ?? 100}
+                                          onChange={(e) => handleRowNestedDataChange("consumibles", "mantenimiento_kit_nivel", Number(e.target.value))}
+                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
+                                          placeholder="K"
+                                        />
+                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">K</span>
+                                      </div>
+                                      <div className="relative flex-1" title="Unidad Imagen %">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          value={editingRowData.consumibles?.unidad_imagen_nivel ?? 100}
+                                          onChange={(e) => handleRowNestedDataChange("consumibles", "unidad_imagen_nivel", Number(e.target.value))}
+                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
+                                          placeholder="U"
+                                        />
+                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">U</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col gap-1.5 py-0.5 min-w-[170px] max-w-[210px]">
+                                      {/* Toner bar */}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">T</span>
+                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-300 ${
+                                              toner <= 15 ? "bg-rose-500" : toner <= 35 ? "bg-amber-500" : "bg-emerald-500"
+                                            }`}
+                                            style={{ width: `${toner}%` }}
+                                          ></div>
+                                        </div>
+                                        <span className={`text-[10px] font-bold w-7 text-right ${toner <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
+                                          {toner}%
+                                        </span>
+                                      </div>
+                                      {/* Maint Kit bar */}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">K</span>
+                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-300 ${
+                                              maint <= 15 ? "bg-rose-500" : maint <= 35 ? "bg-amber-500" : "bg-emerald-500"
+                                            }`}
+                                            style={{ width: `${maint}%` }}
+                                          ></div>
+                                        </div>
+                                        <span className={`text-[10px] font-bold w-7 text-right ${maint <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
+                                          {maint}%
+                                        </span>
+                                      </div>
+                                      {/* Image Unit bar */}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">U</span>
+                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-300 ${
+                                              unit <= 15 ? "bg-rose-500" : unit <= 35 ? "bg-amber-500" : "bg-emerald-500"
+                                            }`}
+                                            style={{ width: `${unit}%` }}
+                                          ></div>
+                                        </div>
+                                        <span className={`text-[10px] font-bold w-7 text-right ${unit <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
+                                          {unit}%
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* OBSERVACIONES */}
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editingRowData.observaciones || ""}
+                                      onChange={(e) => handleRowDataChange("observaciones", e.target.value)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                      placeholder="Observaciones"
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface"
+                                    />
+                                  ) : (
+                                    <div className="max-w-[200px]">
+                                      {printer.observaciones ? (
+                                        <div className="flex items-center gap-1.5 text-slate-600" title={printer.observaciones}>
+                                          <span className="material-symbols-outlined text-[13px] text-slate-400 shrink-0">notes</span>
+                                          <span className="truncate text-[11px] italic leading-tight">
+                                            {printer.observaciones}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-300 italic text-[11px]">-</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+
                                 {/* ESTADO */}
-                                <td className="px-5 py-3 align-middle">
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
                                   {isEditing ? (
                                     <select
                                       value={editingRowData.estado_funcionamiento || "Operativo"}
@@ -3036,130 +3202,8 @@ export default function App() {
                                   )}
                                 </td>
 
-                                {/* CONSUMIBLES */}
-                                <td className="px-5 py-3 align-middle">
-                                  {isEditing ? (
-                                    <div className="flex gap-1.5 min-w-[150px] pt-1">
-                                      <div className="relative flex-1" title="Tóner %">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max="100"
-                                          value={editingRowData.consumibles?.toner_nivel ?? 100}
-                                          onChange={(e) => handleRowNestedDataChange("consumibles", "toner_nivel", Number(e.target.value))}
-                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
-                                          placeholder="T"
-                                        />
-                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">T</span>
-                                      </div>
-                                      <div className="relative flex-1" title="Unidad Imagen %">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max="100"
-                                          value={editingRowData.consumibles?.unidad_imagen_nivel ?? 100}
-                                          onChange={(e) => handleRowNestedDataChange("consumibles", "unidad_imagen_nivel", Number(e.target.value))}
-                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
-                                          placeholder="U"
-                                        />
-                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">U</span>
-                                      </div>
-                                      <div className="relative flex-1" title="Kit Mantenimiento %">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max="100"
-                                          value={editingRowData.consumibles?.mantenimiento_kit_nivel ?? 100}
-                                          onChange={(e) => handleRowNestedDataChange("consumibles", "mantenimiento_kit_nivel", Number(e.target.value))}
-                                          onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                          className="w-full bg-surface border border-outline-variant rounded-xl p-1 text-[11px] text-center focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
-                                          placeholder="K"
-                                        />
-                                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 uppercase">K</span>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex flex-col gap-1.5 py-0.5 min-w-[170px] max-w-[210px]">
-                                      {/* Toner bar */}
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">T</span>
-                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
-                                          <div
-                                            className={`h-full rounded-full transition-all duration-300 ${
-                                              toner <= 15 ? "bg-rose-500" : toner <= 35 ? "bg-amber-500" : "bg-emerald-500"
-                                            }`}
-                                            style={{ width: `${toner}%` }}
-                                          ></div>
-                                        </div>
-                                        <span className={`text-[10px] font-bold w-7 text-right ${toner <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
-                                          {toner}%
-                                        </span>
-                                      </div>
-                                      {/* Image Unit bar */}
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">U</span>
-                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
-                                          <div
-                                            className={`h-full rounded-full transition-all duration-300 ${
-                                              unit <= 15 ? "bg-rose-500" : unit <= 35 ? "bg-amber-500" : "bg-emerald-500"
-                                            }`}
-                                            style={{ width: `${unit}%` }}
-                                          ></div>
-                                        </div>
-                                        <span className={`text-[10px] font-bold w-7 text-right ${unit <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
-                                          {unit}%
-                                        </span>
-                                      </div>
-                                      {/* Maint Kit bar */}
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="text-[9px] font-bold text-slate-400 w-3 text-right">K</span>
-                                        <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
-                                          <div
-                                            className={`h-full rounded-full transition-all duration-300 ${
-                                              maint <= 15 ? "bg-rose-500" : maint <= 35 ? "bg-amber-500" : "bg-emerald-500"
-                                            }`}
-                                            style={{ width: `${maint}%` }}
-                                          ></div>
-                                        </div>
-                                        <span className={`text-[10px] font-bold w-7 text-right ${maint <= 15 ? "text-rose-600 font-extrabold" : "text-slate-600"}`}>
-                                          {maint}%
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </td>
-
-                                {/* OBSERVACIONES */}
-                                <td className="px-5 py-3 align-middle">
-                                  {isEditing ? (
-                                    <input
-                                      type="text"
-                                      value={editingRowData.observaciones || ""}
-                                      onChange={(e) => handleRowDataChange("observaciones", e.target.value)}
-                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                      placeholder="Observaciones"
-                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface"
-                                    />
-                                  ) : (
-                                    <div className="max-w-[200px]">
-                                      {printer.observaciones ? (
-                                        <div className="flex items-center gap-1.5 text-slate-600" title={printer.observaciones}>
-                                          <span className="material-symbols-outlined text-[13px] text-slate-400 shrink-0">notes</span>
-                                          <span className="truncate text-[11px] italic leading-tight">
-                                            {printer.observaciones}
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <span className="text-slate-300 italic text-[11px]">-</span>
-                                      )}
-                                    </div>
-                                  )}
-                                </td>
-
-                                {/* CÓDIGO DE CASO */}
-                                <td className="px-5 py-3 align-middle font-semibold">
+                                {/* CASO ASIGNADO */}
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
                                   {isEditing ? (
                                     <input
                                       type="text"
@@ -3167,11 +3211,11 @@ export default function App() {
                                       onChange={(e) => handleRowDataChange("codigo_caso_cas", e.target.value)}
                                       onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
                                       placeholder="CAS-XXXX"
-                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface font-mono"
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface font-mono font-semibold"
                                     />
                                   ) : (
                                     printer.codigo_caso_cas ? (
-                                      <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded font-mono text-[10px] block w-max max-w-[130px] truncate" title={printer.codigo_caso_cas}>
+                                      <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded font-mono text-[10px] block w-max max-w-[130px] truncate font-bold" title={printer.codigo_caso_cas}>
                                         {printer.codigo_caso_cas}
                                       </span>
                                     ) : (
@@ -3180,8 +3224,29 @@ export default function App() {
                                   )}
                                 </td>
 
+                                {/* DETALLES DEL CASO */}
+                                <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editingRowData.detalle_caso || ""}
+                                      onChange={(e) => handleRowDataChange("detalle_caso", e.target.value)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                      placeholder="Detalle de caso"
+                                      className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface-variant italic leading-tight"
+                                    />
+                                  ) : (
+                                    printer.detalle_caso ? (
+                                      <span className="text-[10px] text-slate-500 italic block max-w-[180px] truncate leading-tight" title={printer.detalle_caso}>
+                                        {printer.detalle_caso}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-300">-</span>
+                                    )
+                                  )}
+                                </td>
                                 {/* ACCIONES */}
-                                <td className="px-5 py-3 align-middle text-center">
+                                <td className="px-4 py-3 align-middle border-b border-slate-200 text-center">
                                   {isEditing ? (
                                     <div className="flex items-center justify-center gap-1.5">
                                       <button
@@ -3847,22 +3912,6 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">% U. Imagen</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={editUnit}
-                      onChange={(e) => setEditUnit(Number(e.target.value))}
-                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
-                      required
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
                   <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">% Kit Mant.</label>
                   <div className="relative">
                     <input
@@ -3871,6 +3920,22 @@ export default function App() {
                       max="100"
                       value={editMantenimiento}
                       onChange={(e) => setEditMantenimiento(Number(e.target.value))}
+                      className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
+                      required
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">% U. Imagen</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={editUnit}
+                      onChange={(e) => setEditUnit(Number(e.target.value))}
                       className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                       required
                     />
@@ -3900,6 +3965,16 @@ export default function App() {
                     placeholder="Ej. CAS-6013278-V6N2C5 (Opcional)"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider font-extrabold text-primary">Detalle del Caso CAS</label>
+                <textarea
+                  value={editDetalleCaso}
+                  onChange={(e) => setEditDetalleCaso(e.target.value)}
+                  className="w-full bg-surface-container-low border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm h-16 resize-none"
+                  placeholder="Escribe aquí los detalles, diagnóstico o notas para este caso CAS (Opcional)..."
+                />
               </div>
 
               <div className="space-y-1">

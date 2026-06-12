@@ -120,6 +120,10 @@ function buildSystemPrompt() {
     - Si el mensaje o imagen reporta fallas mixtas (ej: "Presenta atascos constantes, tiene problemas se atasca duplex y kit de mantenimiento"), debes remover por completo la referencia a consumibles y colocar solo la parte del fallo físico (ej: "Presenta atascos constantes, tiene problemas se atasca duplex").
     - Si el mensaje o la evidencia no describe fallas físicas o incidentes operativos y solo describe niveles o reemplazos de consumibles/suministros, pon "observaciones" como una cadena vacía "".
  
+    REGLAS IMPORTANTES PARA EL CAMPO "detalle_caso":
+    - Si el mensaje técnico, Excel o la imagen asocia un detalle, reporte o diagnóstico específico al código de caso CAS asignado, extrae esa descripción en el campo "detalle_caso".
+    - Si no se especifica un detalle para el caso, o si no hay un caso CAS asignado, pon "detalle_caso" como una cadena vacía "".
+
     Especificaciones del JSON de respuesta según la acción:
  
     Para "crear" | "actualizar" | "eliminar":
@@ -135,7 +139,8 @@ function buildSystemPrompt() {
       "unidad_imagen_nivel": number,
       "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
       "observaciones": "string",
-      "codigo_caso_cas": "string"
+      "codigo_caso_cas": "string",
+      "detalle_caso": "string"
     }
  
     Para "actualizar_multiples":
@@ -153,7 +158,8 @@ function buildSystemPrompt() {
           "unidad_imagen_nivel": number,
           "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
           "observaciones": "string",
-          "codigo_caso_cas": "string"
+          "codigo_caso_cas": "string",
+          "detalle_caso": "string"
         }
       ]
     }
@@ -516,7 +522,8 @@ export async function analizarImportacionExcel(filasJson) {
           "mantenimiento_kit_nivel": number,
           "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
           "observaciones": "string",
-          "codigo_caso_cas": "string"
+          "codigo_caso_cas": "string",
+          "detalle_caso": "string"
         }
       ],
       "reporte_resumen": "string"
