@@ -27,11 +27,20 @@ import { usePrinters } from "./hooks/usePrinters";
 import { useStock } from "./hooks/useStock";
 import { useChat } from "./hooks/useChat";
 import { useExcelImport } from "./hooks/useExcelImport";
+import { useAuth } from "./hooks/useAuth";
 
 export function useAppController() {
   const navigation = useNavigation();
   const settings = useSettings();
   const generalHistory = useGeneralHistory();
+  const auth = useAuth();
+
+  // Redirect guest if on restricted tab
+  useEffect(() => {
+    if (!auth.isAuthenticated && navigation.currentTab === "chat") {
+      navigation.setCurrentTab("dashboard");
+    }
+  }, [auth.isAuthenticated, navigation.currentTab]);
 
   const printers = usePrinters({
     db,
@@ -293,6 +302,23 @@ export function useAppController() {
     setIsExcelImportModalOpen: excelImport.setIsExcelImportModalOpen,
     excelFileInputRef: excelImport.excelFileInputRef,
     handleExcelUpload: excelImport.handleExcelUpload,
-    handleConfirmExcelImport: handleConfirmExcelImport
+    handleConfirmExcelImport: handleConfirmExcelImport,
+
+    // Auth
+    user: auth.user,
+    isAuthenticated: auth.isAuthenticated,
+    isAuthLoading: auth.loading,
+    loginError: auth.loginError,
+    setLoginError: auth.setLoginError,
+    isLoginModalOpen: auth.isLoginModalOpen,
+    setIsLoginModalOpen: auth.setIsLoginModalOpen,
+    login: auth.login,
+    loginWithGoogle: auth.loginWithGoogle,
+    logout: auth.logout,
+    admins: auth.admins,
+    loadingAdmins: auth.loadingAdmins,
+    addAdmin: auth.addAdmin,
+    removeAdmin: auth.removeAdmin,
+    fetchAdmins: auth.fetchAdmins
   };
 }

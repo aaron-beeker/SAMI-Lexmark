@@ -35,7 +35,8 @@ export default function PrinterModal({
   handleDeleteHistoryItem,
   handleDeletePrinter,
   savingEdit,
-  checkPrinterAlerts
+  checkPrinterAlerts,
+  isAuthenticated
 }) {
 
   return (
@@ -110,6 +111,7 @@ export default function PrinterModal({
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm uppercase"
                 placeholder="Ej. 701924410D8X7"
                 required
+                disabled={!isAuthenticated}
               />
             </div>
             <div className="space-y-1">
@@ -118,6 +120,7 @@ export default function PrinterModal({
                 value={editModelo}
                 onChange={(e) => setEditModelo(e.target.value)}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
+                disabled={!isAuthenticated}
               >
                 <option value="MX431ADN">MX431ADN</option>
                 <option value="MX632ADWE">MX632ADWE</option>
@@ -135,6 +138,7 @@ export default function PrinterModal({
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
                 placeholder="Ej. Soporte, C.E Otorrino..."
                 required
+                disabled={!isAuthenticated}
               />
             </div>
             <div className="space-y-1">
@@ -143,6 +147,7 @@ export default function PrinterModal({
                 value={editUbicacion}
                 onChange={(e) => setEditUbicacion(e.target.value)}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
+                disabled={!isAuthenticated}
               >
                 <option value="Hospital">Hospital</option>
                 <option value="MUR">MUR</option>
@@ -162,6 +167,7 @@ export default function PrinterModal({
                   onChange={(e) => setEditToner(Number(e.target.value))}
                   className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                   required
+                  disabled={!isAuthenticated}
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
@@ -178,6 +184,7 @@ export default function PrinterModal({
                   onChange={(e) => setEditMantenimiento(Number(e.target.value))}
                   className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                   required
+                  disabled={!isAuthenticated}
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
@@ -194,6 +201,7 @@ export default function PrinterModal({
                   onChange={(e) => setEditUnit(Number(e.target.value))}
                   className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                   required
+                  disabled={!isAuthenticated}
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
@@ -209,6 +217,7 @@ export default function PrinterModal({
                 onChange={(e) => setEditIp(e.target.value)}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
                 placeholder="Ej. 192.168.1.15 (Opcional)"
+                disabled={!isAuthenticated}
               />
             </div>
             <div className="space-y-1">
@@ -219,6 +228,7 @@ export default function PrinterModal({
                 onChange={(e) => setEditCasCode(e.target.value)}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
                 placeholder="Ej. CAS-6013278-V6N2C5 (Opcional)"
+                disabled={!isAuthenticated}
               />
             </div>
           </div>
@@ -230,6 +240,7 @@ export default function PrinterModal({
               onChange={(e) => setEditDetalleCaso(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm h-16 resize-none"
               placeholder="Escribe aquí los detalles, diagnóstico o notas para este caso CAS (Opcional)..."
+              disabled={!isAuthenticated}
             />
           </div>
 
@@ -240,6 +251,7 @@ export default function PrinterModal({
               onChange={(e) => setEditObservaciones(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm resize-none h-16"
               placeholder="Notas o fallas (Ej. Se traba papel...)"
+              disabled={!isAuthenticated}
             />
             </div>
 
@@ -294,14 +306,16 @@ export default function PrinterModal({
                                 : ""
                           }
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteHistoryItem(hist.id)}
-                          className="text-error hover:bg-error/10 p-0.5 rounded-full transition-colors active:scale-90 flex items-center justify-center"
-                          title="Eliminar de historial"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">delete</span>
-                        </button>
+                        {isAuthenticated && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHistoryItem(hist.id)}
+                            className="text-error hover:bg-error/10 p-0.5 rounded-full transition-colors active:scale-90 flex items-center justify-center"
+                            title="Eliminar de historial"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">delete</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -343,39 +357,52 @@ export default function PrinterModal({
 
         {/* Actions */}
         <div className="flex flex-col-reverse sm:flex-row-reverse gap-3 pb-4 sm:pb-0 shrink-0">
-          <button
-            type="submit"
-            disabled={savingEdit}
-            className="w-full sm:w-auto px-6 py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
-          >
-            {savingEdit ? (
-              <>
-                <span className="material-symbols-outlined text-sm animate-spin">sync</span>
-                <span>Guardando...</span>
-              </>
-            ) : (
-              <>
-                <span>Guardar Cambios</span>
-                <span className="material-symbols-outlined text-sm">save</span>
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            className="w-full sm:w-auto px-6 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm"
-            onClick={handleCloseEditModal}
-          >
-            Cancelar
-          </button>
-          {!isCreateMode && (
+          {isAuthenticated ? (
+            <>
+              <button
+                type="submit"
+                disabled={savingEdit}
+                className="w-full sm:w-auto px-6 py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
+              >
+                {savingEdit ? (
+                  <>
+                    <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Guardar Cambios</span>
+                    <span className="material-symbols-outlined text-sm">save</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                className="w-full sm:w-auto px-6 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm"
+                onClick={handleCloseEditModal}
+              >
+                Cancelar
+              </button>
+              {!isCreateMode && (
+                <button
+                  type="button"
+                  disabled={savingEdit}
+                  onClick={handleDeletePrinter}
+                  className="w-full sm:w-auto px-6 py-3.5 bg-error-container text-on-error-container border border-error/20 font-bold rounded-2xl active:scale-95 transition-all hover:bg-error-container/80 text-sm flex items-center justify-center gap-1.5 sm:mr-auto"
+                >
+                  <span className="material-symbols-outlined text-sm">delete</span>
+                  <span>Eliminar</span>
+                </button>
+              )}
+            </>
+          ) : (
             <button
               type="button"
-              disabled={savingEdit}
-              onClick={handleDeletePrinter}
-              className="w-full sm:w-auto px-6 py-3.5 bg-error-container text-on-error-container border border-error/20 font-bold rounded-2xl active:scale-95 transition-all hover:bg-error-container/80 text-sm flex items-center justify-center gap-1.5 sm:mr-auto"
+              className="w-full px-6 py-3.5 bg-primary text-on-primary font-bold rounded-2xl active:scale-95 transition-all hover:bg-primary/95 text-sm flex items-center justify-center gap-1.5"
+              onClick={handleCloseEditModal}
             >
-              <span className="material-symbols-outlined text-sm">delete</span>
-              <span>Eliminar</span>
+              <span>Cerrar</span>
+              <span className="material-symbols-outlined text-sm font-bold">check</span>
             </button>
           )}
         </div>

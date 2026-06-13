@@ -20,7 +20,8 @@ export default function DashboardView({
   setFilterCriticidad,
   handleOpenEditModal,
   handleDecrementStockClick,
-  updateManualStock
+  updateManualStock,
+  isAuthenticated
 }) {
   return (
     <div className="space-y-6 animate-fade-in">
@@ -92,6 +93,7 @@ export default function DashboardView({
         getPrinterStatus={getPrinterStatus}
         checkPrinterAlerts={checkPrinterAlerts}
         handleOpenEditModal={handleOpenEditModal}
+        isAuthenticated={isAuthenticated}
       />
 
       {/* Desktop Two-Column Layout */}
@@ -286,25 +288,28 @@ export default function DashboardView({
         {/* Right Column (AI Quick Link & Stock) */}
         <div className="lg:col-span-5 space-y-6">
           {/* Quick Gemini Callout */}
-          <section
-            onClick={() => setCurrentTab("chat")}
-            className="p-5 bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-2xl shadow-md cursor-pointer hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-between"
-          >
-            <div className="space-y-1 flex-1 pr-4">
-              <h3 className="font-bold text-base flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-lg animate-pulse-subtle">smart_toy</span>
-                Consultar SAMI AI
-              </h3>
-              <p className="text-xs text-on-primary-container/90">Sube foto de panel de control o reporta estado de consumibles por texto.</p>
-            </div>
-            <span className="material-symbols-outlined text-2xl opacity-80">chevron_right</span>
-          </section>
+          {isAuthenticated && (
+            <section
+              onClick={() => setCurrentTab("chat")}
+              className="p-5 bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-2xl shadow-md cursor-pointer hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-between"
+            >
+              <div className="space-y-1 flex-1 pr-4">
+                <h3 className="font-bold text-base flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-lg animate-pulse-subtle">smart_toy</span>
+                  Consultar SAMI AI
+                </h3>
+                <p className="text-xs text-on-primary-container/90">Sube foto de panel de control o reporta estado de consumibles por texto.</p>
+              </div>
+              <span className="material-symbols-outlined text-2xl opacity-80">chevron_right</span>
+            </section>
+          )}
 
           {/* Stock / Repuestos Section */}
           <StockView
             repuestos={repuestos}
             handleDecrementStockClick={handleDecrementStockClick}
             updateManualStock={updateManualStock}
+            isAuthenticated={isAuthenticated}
           />
         </div>
       </div>

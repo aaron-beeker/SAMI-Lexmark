@@ -10,6 +10,8 @@ import SettingsView from "./views/SettingsView";
 import PrinterModal from "./views/PrinterModal";
 import StockModal from "./views/StockModal";
 import ExcelImportModal from "./views/ExcelImportModal";
+import LoginModal from "./views/LoginModal";
+import UsersView from "./views/UsersView";
 
 export default function App() {
   const c = useAppController();
@@ -22,6 +24,7 @@ export default function App() {
         setCurrentTab={c.setCurrentTab} 
         onOpenCreateModal={c.handleOpenCreateModal} 
         setFilterCriticidad={c.setFilterCriticidad}
+        isAuthenticated={c.isAuthenticated}
       />
 
       {/* Main Panel */}
@@ -29,6 +32,10 @@ export default function App() {
         <TopAppBar 
           currentTab={c.currentTab} 
           setCurrentTab={c.setCurrentTab} 
+          isAuthenticated={c.isAuthenticated}
+          user={c.user}
+          onLoginClick={() => c.setIsLoginModalOpen(true)}
+          onLogoutClick={c.logout}
         />
 
         <main className="flex-grow overflow-y-auto p-4 md:p-8 max-w-lg md:max-w-7xl mx-auto w-full space-y-6 pb-24 md:pb-8">
@@ -52,6 +59,7 @@ export default function App() {
               handleOpenEditModal={c.handleOpenEditModal}
               handleDecrementStockClick={c.handleDecrementStockClick}
               updateManualStock={c.updateManualStock}
+              isAuthenticated={c.isAuthenticated}
             />
           )}
 
@@ -63,6 +71,7 @@ export default function App() {
               setFilterCriticidad={c.setFilterCriticidad}
               filteredPrinters={c.filteredPrinters}
               loadingPrinters={c.loadingPrinters}
+              isAuthenticated={c.isAuthenticated}
               handleDownloadReport={c.handleDownloadReport}
               handleOpenCreateModal={c.handleOpenCreateModal}
               copiedSerialId={c.copiedSerialId}
@@ -121,6 +130,16 @@ export default function App() {
             />
           )}
 
+          {c.currentTab === "usuarios" && c.isAuthenticated && (
+            <UsersView
+              user={c.user}
+              admins={c.admins}
+              loadingAdmins={c.loadingAdmins}
+              addAdmin={c.addAdmin}
+              removeAdmin={c.removeAdmin}
+            />
+          )}
+
           {c.currentTab === "settings" && (
             <SettingsView
               apiKeyInput={c.apiKeyInput}
@@ -140,8 +159,9 @@ export default function App() {
           { id: "dashboard", label: "Dashboard", icon: "dashboard" },
           { id: "inventario", label: "Inventario", icon: "inventory_2" },
           { id: "chat", label: "Chat IA", icon: "smart_toy" },
-          { id: "historial", label: "Historial", icon: "history" }
-        ].map(tab => (
+          { id: "historial", label: "Historial", icon: "history" },
+          { id: "usuarios", label: "Admins", icon: "group" }
+        ].filter(tab => (tab.id !== "chat" && tab.id !== "usuarios") || c.isAuthenticated).map(tab => (
           <button
             key={tab.id}
             onClick={() => {
@@ -174,6 +194,7 @@ export default function App() {
           handleCloseEditModal={c.handleCloseEditModal}
           selectedPrinter={c.selectedPrinter}
           isCreateMode={c.isCreateMode}
+          isAuthenticated={c.isAuthenticated}
           editIdSerie={c.editIdSerie}
           setEditIdSerie={c.setEditIdSerie}
           editModelo={c.editModelo}
@@ -227,6 +248,14 @@ export default function App() {
         setIsExcelImportModalOpen={c.setIsExcelImportModalOpen}
         setExcelData={c.setExcelData}
         setExcelFileName={c.setExcelFileName}
+      />
+
+      <LoginModal
+        isOpen={c.isLoginModalOpen}
+        onClose={() => c.setIsLoginModalOpen(false)}
+        loginWithGoogle={c.loginWithGoogle}
+        loginError={c.loginError}
+        setLoginError={c.setLoginError}
       />
     </div>
 

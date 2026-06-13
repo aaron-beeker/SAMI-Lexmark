@@ -1,6 +1,27 @@
 import React from "react";
 
-export default function StockView({ repuestos, handleDecrementStockClick, updateManualStock }) {
+export default function StockView({ repuestos, handleDecrementStockClick, updateManualStock, isAuthenticated }) {
+  const renderStockControls = (itemId, field, value, textColor = "") => {
+    if (isAuthenticated) {
+      return (
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => handleDecrementStockClick(itemId, field, value || 0)}
+            className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+          >-</button>
+          <span className={`font-bold min-w-[12px] text-center ${textColor}`}>{value ?? 0}</span>
+          <button
+            type="button"
+            onClick={() => updateManualStock(itemId, field, (value || 0) + 1)}
+            className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
+          >+</button>
+        </div>
+      );
+    }
+    return <span className={`font-bold min-w-[12px] text-center pr-1.5 ${textColor}`}>{value ?? 0}</span>;
+  };
+
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
@@ -30,35 +51,11 @@ export default function StockView({ repuestos, handleDecrementStockClick, update
                   <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Tóner</span>
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-on-surface-variant">Hosp:</span>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDecrementStockClick(item.id, "toner_hospital", item.toner_hospital || 0)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >-</button>
-                      <span className="font-bold min-w-[12px] text-center">{item.toner_hospital ?? 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => updateManualStock(item.id, "toner_hospital", (item.toner_hospital || 0) + 1)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >+</button>
-                    </div>
+                    {renderStockControls(item.id, "toner_hospital", item.toner_hospital)}
                   </div>
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-on-surface-variant">Dep:</span>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDecrementStockClick(item.id, "toner_deposito", item.toner_deposito || 0)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >-</button>
-                      <span className="font-bold min-w-[12px] text-center text-primary">{item.toner_deposito ?? 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => updateManualStock(item.id, "toner_deposito", (item.toner_deposito || 0) + 1)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >+</button>
-                    </div>
+                    {renderStockControls(item.id, "toner_deposito", item.toner_deposito, "text-primary")}
                   </div>
                 </div>
 
@@ -67,35 +64,11 @@ export default function StockView({ repuestos, handleDecrementStockClick, update
                   <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Kit Mant.</span>
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-on-surface-variant">Hosp:</span>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDecrementStockClick(item.id, "mantenimiento_hospital", item.mantenimiento_hospital || 0)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >-</button>
-                      <span className="font-bold min-w-[12px] text-center">{item.mantenimiento_hospital ?? 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => updateManualStock(item.id, "mantenimiento_hospital", (item.mantenimiento_hospital || 0) + 1)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >+</button>
-                    </div>
+                    {renderStockControls(item.id, "mantenimiento_hospital", item.mantenimiento_hospital)}
                   </div>
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-on-surface-variant">Dep:</span>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDecrementStockClick(item.id, "mantenimiento_deposito", item.mantenimiento_deposito || 0)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >-</button>
-                      <span className="font-bold min-w-[12px] text-center text-tertiary">{item.mantenimiento_deposito ?? 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => updateManualStock(item.id, "mantenimiento_deposito", (item.mantenimiento_deposito || 0) + 1)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >+</button>
-                    </div>
+                    {renderStockControls(item.id, "mantenimiento_deposito", item.mantenimiento_deposito, "text-tertiary")}
                   </div>
                 </div>
 
@@ -104,35 +77,11 @@ export default function StockView({ repuestos, handleDecrementStockClick, update
                   <span className="text-[9px] font-bold text-outline block uppercase tracking-wider text-center">Unid. Imagen</span>
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-on-surface-variant">Hosp:</span>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDecrementStockClick(item.id, "unidad_hospital", item.unidad_hospital || 0)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >-</button>
-                      <span className="font-bold min-w-[12px] text-center">{item.unidad_hospital ?? 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => updateManualStock(item.id, "unidad_hospital", (item.unidad_hospital || 0) + 1)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >+</button>
-                    </div>
+                    {renderStockControls(item.id, "unidad_hospital", item.unidad_hospital)}
                   </div>
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-on-surface-variant">Dep:</span>
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleDecrementStockClick(item.id, "unidad_deposito", item.unidad_deposito || 0)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >-</button>
-                      <span className="font-bold min-w-[12px] text-center text-secondary">{item.unidad_deposito ?? 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => updateManualStock(item.id, "unidad_deposito", (item.unidad_deposito || 0) + 1)}
-                        className="w-4 h-4 flex items-center justify-center bg-surface-container-high rounded text-on-surface hover:bg-outline-variant/50 font-bold active:scale-90"
-                      >+</button>
-                    </div>
+                    {renderStockControls(item.id, "unidad_deposito", item.unidad_deposito, "text-secondary")}
                   </div>
                 </div>
               </div>

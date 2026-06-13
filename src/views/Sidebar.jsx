@@ -1,12 +1,19 @@
 import React from "react";
 
-export default function Sidebar({ currentTab, setCurrentTab, onOpenCreateModal, setFilterCriticidad }) {
-  const tabs = [
+export default function Sidebar({ currentTab, setCurrentTab, onOpenCreateModal, setFilterCriticidad, isAuthenticated }) {
+  const allTabs = [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
     { id: "inventario", label: "Inventario", icon: "inventory_2" },
     { id: "chat", label: "Chat AI", icon: "smart_toy" },
-    { id: "historial", label: "Historial", icon: "history" }
+    { id: "historial", label: "Historial", icon: "history" },
+    { id: "usuarios", label: "Administradores", icon: "group" }
   ];
+
+  const tabs = allTabs.filter((tab) => {
+    if (tab.id === "chat" && !isAuthenticated) return false;
+    if (tab.id === "usuarios" && !isAuthenticated) return false;
+    return true;
+  });
 
   return (
     <aside className="hidden md:flex flex-col w-64 border-r border-outline-variant bg-surface-container-low shrink-0 h-screen">

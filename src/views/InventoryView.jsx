@@ -26,7 +26,8 @@ export default function InventoryView({
   currentPage,
   setCurrentPage,
   totalPages,
-  paginatedPrinters
+  paginatedPrinters,
+  isAuthenticated
 }) {
 
   return (
@@ -45,14 +46,16 @@ export default function InventoryView({
               <span className="material-symbols-outlined text-sm">download</span>
               <span>Reporte Excel</span>
             </button>
-            <button
-              type="button"
-              onClick={handleOpenCreateModal}
-              className="flex items-center gap-1 px-3.5 py-2 bg-primary text-on-primary rounded-xl font-bold text-xs hover:bg-primary-container active:scale-95 transition-all shadow-sm"
-            >
-              <span className="material-symbols-outlined text-sm">add</span>
-              <span>Registrar Impresora</span>
-            </button>
+            {isAuthenticated && (
+              <button
+                type="button"
+                onClick={handleOpenCreateModal}
+                className="flex items-center gap-1 px-3.5 py-2 bg-primary text-on-primary rounded-xl font-bold text-xs hover:bg-primary-container active:scale-95 transition-all shadow-sm"
+              >
+                <span className="material-symbols-outlined text-sm">add</span>
+                <span>Registrar Impresora</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -349,25 +352,22 @@ export default function InventoryView({
               })}
             </div>
 
-            {/* Desktop View (Excel-like Editable Table) */}
+            {/* Desktop View (Consolidated Modern Table with Clear Separations) */}
             <div className="hidden md:block bg-surface border border-outline-variant rounded-2xl shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[1150px] text-xs animate-fade-in">
-                  <thead>
-                    <tr className="bg-slate-100 border-b-2 border-slate-300 text-[11px] font-bold text-slate-700 select-none uppercase">
-                      <th className="px-4 py-3 border-r border-slate-200">IMPRESORA/MODELO</th>
-                      <th className="px-4 py-3 border-r border-slate-200">SERIE</th>
-                      <th className="px-4 py-3 border-r border-slate-200">IP / USB</th>
-                      <th className="px-4 py-3 border-r border-slate-200">ÁREA</th>
-                      <th className="px-4 py-3 border-r border-slate-200">CONSUMIBLES</th>
-                      <th className="px-4 py-3 border-r border-slate-200">OBSERVACIONES</th>
-                      <th className="px-4 py-3 border-r border-slate-200">ESTADO</th>
-                      <th className="px-4 py-3 border-r border-slate-200">CASO ASIGNADO</th>
-                      <th className="px-4 py-3 border-r border-slate-200">DETALLES DEL CASO</th>
-                      <th className="px-4 py-3 text-center">ACCIONES</th>
+                <table className="w-full text-left border-collapse min-w-[1100px] text-xs animate-fade-in">
+                  <thead className="bg-surface-container-low border-b border-outline-variant">
+                    <tr className="text-[10px] font-black text-outline uppercase tracking-widest select-none">
+                      <th className="px-6 py-4.5 pl-6 border-r border-outline-variant/60">Dispositivo</th>
+                      <th className="px-6 py-4.5 border-r border-outline-variant/60">Ubicación y Conexión</th>
+                      <th className="px-6 py-4.5 border-r border-outline-variant/60">Consumibles</th>
+                      <th className="px-6 py-4.5 border-r border-outline-variant/60">Estado</th>
+                      <th className="px-6 py-4.5 border-r border-outline-variant/60">Caso CAS</th>
+                      <th className="px-6 py-4.5 border-r border-outline-variant/60">Observaciones</th>
+                      <th className="px-6 py-4.5 text-center pr-6">Acciones</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-outline-variant border-b border-outline-variant font-medium">
                     {paginatedPrinters.map((printer) => {
                       const isEditing = editingRowId === printer.id_serie;
                       const toner = isEditing
@@ -383,115 +383,116 @@ export default function InventoryView({
                       return (
                         <tr
                           key={printer.id_serie}
-                          onDoubleClick={() => !isEditing && handleStartRowEdit(printer)}
-                          className={`group hover:bg-slate-50/50 transition-colors border-b border-slate-200 ${
-                            isEditing ? "bg-primary-fixed/10" : "even:bg-slate-50/10"
+                          onDoubleClick={() => isAuthenticated && !isEditing && handleStartRowEdit(printer)}
+                          className={`group hover:bg-surface-container-low/30 transition-colors ${
+                            isEditing ? "bg-primary/5" : "even:bg-surface-container-lowest/20"
                           }`}
                         >
-                          {/* IMPRESORA/MODELO */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
+                          {/* DISPOSITIVO */}
+                          <td className="px-6 py-5.5 pl-6 align-middle border-r border-outline-variant/30">
                             {isEditing ? (
-                              <select
-                                value={editingRowData.modelo || "MX431ADN"}
-                                onChange={(e) => handleRowDataChange("modelo", e.target.value)}
-                                onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary font-bold text-on-surface"
-                              >
-                                <option value="MX431ADN">MX431ADN</option>
-                                <option value="MX632ADWE">MX632ADWE</option>
-                                <option value="MX722ADHE">MX722ADHE</option>
-                              </select>
-                            ) : (
-                              <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${
-                                printer.modelo === "MX722ADHE"
-                                  ? "bg-purple-100 text-purple-800 border border-purple-200"
-                                  : printer.modelo === "MX632ADWE"
-                                    ? "bg-indigo-100 text-indigo-800 border border-indigo-200"
-                                    : "bg-blue-100 text-blue-800 border border-blue-200"
-                              }`}>
-                                {printer.modelo}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* SERIE */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
-                            <div className="flex items-center gap-1.5 group/serial">
-                              <span className="font-mono font-bold bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded border border-slate-200/80 text-[11px] select-all">
-                                {printer.id_serie}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopySerial(printer.id_serie)}
-                                className="w-6 h-6 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-500 opacity-0 group-hover/serial:opacity-100 transition-all duration-150 active:scale-90"
-                                title="Copiar Serie"
-                              >
-                                <span className="material-symbols-outlined text-[14px]">
-                                  {copiedSerialId === printer.id_serie ? "check" : "content_copy"}
+                              <div className="space-y-2 max-w-[140px]">
+                                <select
+                                  value={editingRowData.modelo || "MX431ADN"}
+                                  onChange={(e) => handleRowDataChange("modelo", e.target.value)}
+                                  onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-2.5 py-2 text-xs focus:ring-1 focus:ring-primary focus:border-primary font-bold text-on-surface"
+                                >
+                                  <option value="MX431ADN">MX431ADN</option>
+                                  <option value="MX632ADWE">MX632ADWE</option>
+                                  <option value="MX722ADHE">MX722ADHE</option>
+                                </select>
+                                <span className="font-mono text-[10px] text-outline block pl-1">
+                                  S/N: {printer.id_serie}
                                 </span>
-                              </button>
-                            </div>
-                          </td>
-
-                          {/* IP / USB */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
-                            {isEditing ? (
-                              <input
-                                type="text"
-                                value={editingRowData.ip || ""}
-                                onChange={(e) => handleRowDataChange("ip", e.target.value)}
-                                onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                placeholder="Ej. USB o IP"
-                                className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary font-mono text-on-surface"
-                              />
+                              </div>
                             ) : (
-                              <div className="font-mono">
-                                {printer.ip && printer.ip.trim() !== "" ? (
-                                  printer.ip.trim().toLowerCase() === "usb" ? (
-                                    <span className="bg-secondary-fixed/50 text-on-secondary-container rounded-md px-2 py-0.5 flex items-center gap-1 w-max font-bold text-[10px]">
-                                      <span className="material-symbols-outlined text-[12px]">usb</span>
-                                      USB
+                              <div className="space-y-2.5">
+                                <span className={`px-2.5 py-0.5 rounded-lg font-extrabold text-[9px] uppercase tracking-wider border inline-block w-fit ${
+                                  printer.modelo === "MX722ADHE"
+                                    ? "bg-purple-500/10 text-purple-600 border-purple-500/20"
+                                    : printer.modelo === "MX632ADWE"
+                                      ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
+                                      : "bg-blue-500/10 text-blue-600 border-blue-500/20"
+                                }`}>
+                                  {printer.modelo}
+                                </span>
+                                <div className="flex items-center gap-1 group/serial">
+                                  <span className="text-[10px] font-bold text-outline font-mono">S/N:</span>
+                                  <span className="font-mono text-[11px] font-black text-on-surface select-all leading-none">
+                                    {printer.id_serie}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopySerial(printer.id_serie)}
+                                    className="w-5 h-5 rounded-full hover:bg-surface-container-high flex items-center justify-center text-outline opacity-0 group-hover/serial:opacity-100 transition-all duration-150 active:scale-90"
+                                    title="Copiar Serie"
+                                  >
+                                    <span className="material-symbols-outlined text-[12px]">
+                                      {copiedSerialId === printer.id_serie ? "check" : "content_copy"}
                                     </span>
-                                  ) : (
-                                    <span className="flex items-center gap-1.5 text-on-surface font-semibold text-[11px]">
-                                      <span className="relative flex h-2 w-2">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                      </span>
-                                      {printer.ip}
-                                    </span>
-                                  )
-                                ) : (
-                                  <span className="text-outline italic text-[11px]">No config</span>
-                                )}
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </td>
 
-                          {/* ÁREA */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
+                          {/* UBICACIÓN Y CONEXIÓN */}
+                          <td className="px-6 py-5.5 align-middle border-r border-outline-variant/30">
                             {isEditing ? (
-                              <input
-                                type="text"
-                                value={editingRowData.area_actual || ""}
-                                onChange={(e) => handleRowDataChange("area_actual", e.target.value)}
-                                onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                placeholder="Ej. Soporte, C.E Otorrino..."
-                                className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface"
-                              />
+                              <div className="space-y-2 max-w-[180px]">
+                                <input
+                                  type="text"
+                                  value={editingRowData.area_actual || ""}
+                                  onChange={(e) => handleRowDataChange("area_actual", e.target.value)}
+                                  onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                  placeholder="Área física"
+                                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-2.5 py-2 text-xs focus:ring-1 focus:ring-primary focus:border-primary text-on-surface font-semibold"
+                                />
+                                <input
+                                  type="text"
+                                  value={editingRowData.ip || ""}
+                                  onChange={(e) => handleRowDataChange("ip", e.target.value)}
+                                  onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                  placeholder="IP o USB"
+                                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-2.5 py-2 text-xs focus:ring-1 focus:ring-primary focus:border-primary font-mono text-on-surface"
+                                />
+                              </div>
                             ) : (
-                              <span className="font-semibold text-on-surface-variant flex items-center gap-1">
-                                <span className="material-symbols-outlined text-outline text-[14px]">location_on</span>
-                                {printer.area_actual}
-                              </span>
+                              <div className="space-y-2.5">
+                                <div className="font-extrabold text-on-surface flex items-center gap-1.5 text-xs">
+                                  <span className="material-symbols-outlined text-primary text-[14px]">location_on</span>
+                                  <span>{printer.area_actual}</span>
+                                </div>
+                                <div className="pl-4">
+                                  {printer.ip && printer.ip.trim() !== "" ? (
+                                    printer.ip.trim().toLowerCase() === "usb" ? (
+                                      <span className="bg-secondary-fixed/50 text-on-secondary-container rounded-md px-1.5 py-0.5 inline-flex items-center gap-0.5 font-bold text-[9px]">
+                                        <span className="material-symbols-outlined text-[10px]">usb</span>
+                                        USB
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-outline font-mono flex items-center gap-1">
+                                        <span className="relative flex h-1.5 w-1.5">
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                        </span>
+                                        IP: {printer.ip}
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="text-outline-variant italic text-[9px]">Sin conexión</span>
+                                  )}
+                                </div>
+                              </div>
                             )}
                           </td>
 
                           {/* CONSUMIBLES */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200 w-44">
+                          <td className="px-6 py-5.5 align-middle border-r border-outline-variant/30 w-44">
                             {isEditing ? (
-                              <div className="space-y-1.5 py-1 text-[10px]">
-                                <div className="flex items-center justify-between gap-1">
+                              <div className="space-y-2 py-1 text-[10px] max-w-[120px]">
+                                <div className="flex items-center justify-between gap-1.5">
                                   <span className="text-outline font-bold">TÓNER:</span>
                                   <input
                                     type="number"
@@ -500,10 +501,10 @@ export default function InventoryView({
                                     value={toner}
                                     onChange={(e) => handleRowNestedDataChange("consumibles", "toner_nivel", e.target.value)}
                                     onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                    className="w-12 bg-surface border border-outline-variant rounded px-1 py-0.5 text-center text-xs text-on-surface font-bold"
+                                    className="w-12 bg-surface-container-low border border-outline-variant rounded px-1.5 py-0.5 text-center text-xs text-on-surface font-bold"
                                   />
                                 </div>
-                                <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center justify-between gap-1.5">
                                   <span className="text-outline font-bold">KIT MANT:</span>
                                   <input
                                     type="number"
@@ -512,10 +513,10 @@ export default function InventoryView({
                                     value={maint}
                                     onChange={(e) => handleRowNestedDataChange("consumibles", "mantenimiento_kit_nivel", e.target.value)}
                                     onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                    className="w-12 bg-surface border border-outline-variant rounded px-1 py-0.5 text-center text-xs text-on-surface font-bold"
+                                    className="w-12 bg-surface-container-low border border-outline-variant rounded px-1.5 py-0.5 text-center text-xs text-on-surface font-bold"
                                   />
                                 </div>
-                                <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center justify-between gap-1.5">
                                   <span className="text-outline font-bold">U. IMAGEN:</span>
                                   <input
                                     type="number"
@@ -524,117 +525,115 @@ export default function InventoryView({
                                     value={unit}
                                     onChange={(e) => handleRowNestedDataChange("consumibles", "unidad_imagen_nivel", e.target.value)}
                                     onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                    className="w-12 bg-surface border border-outline-variant rounded px-1 py-0.5 text-center text-xs text-on-surface font-bold"
+                                    className="w-12 bg-surface-container-low border border-outline-variant rounded px-1.5 py-0.5 text-center text-xs text-on-surface font-bold"
                                   />
                                 </div>
                               </div>
                             ) : (
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
                                 {[
-                                  { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-error" : "bg-primary"   },
-                                  { label: "Kit M.", value: maint,  color: maint <= 15  ? "bg-error" : "bg-tertiary"  },
-                                  { label: "U. Img", value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" }
+                                  { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-rose-500" : "bg-primary"   },
+                                  { label: "Kit M.", value: maint,  color: maint <= 15  ? "bg-rose-500" : "bg-tertiary"  },
+                                  { label: "U. Img", value: unit,   color: unit  <= 15  ? "bg-rose-500" : "bg-secondary" }
                                 ].map(({ label, value, color }) => (
-                                  <div key={label} className="flex items-center gap-1.5">
-                                    <span className="w-9 text-[9px] font-bold text-outline shrink-0 uppercase tracking-wide text-right">{label}</span>
-                                    <div className="h-1.5 flex-grow bg-slate-100 border border-slate-200/50 rounded-full overflow-hidden">
-                                      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${value}%` }} />
+                                  <div key={label} className="flex items-center gap-1.5 text-[9px]">
+                                    <span className="w-8 text-[8px] font-bold text-outline shrink-0 uppercase tracking-wide text-right">{label}</span>
+                                    <div className="h-1.5 flex-grow bg-surface-container-high rounded-full overflow-hidden border border-outline-variant/10">
+                                      <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${value}%` }} />
                                     </div>
-                                    <span className={`w-8 text-[9px] font-black text-right ${value <= 15 ? 'text-error' : 'text-on-surface'}`}>{value}%</span>
+                                    <span className={`w-7 text-[8px] font-extrabold text-right ${value <= 15 ? 'text-rose-600 animate-pulse' : 'text-on-surface'}`}>{value}%</span>
                                   </div>
                                 ))}
                               </div>
                             )}
                           </td>
 
-                          {/* OBSERVACIONES */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
-                            {isEditing ? (
-                              <textarea
-                                value={editingRowData.observaciones || ""}
-                                onChange={(e) => handleRowDataChange("observaciones", e.target.value)}
-                                onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                placeholder="Notas y observaciones..."
-                                className="w-full bg-surface border border-outline-variant rounded-xl p-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface resize-y"
-                                rows={2}
-                              />
-                            ) : (
-                              <span className="text-on-surface-variant line-clamp-2 italic leading-relaxed" title={printer.observaciones}>
-                                {printer.observaciones || <span className="text-slate-300">-</span>}
-                              </span>
-                            )}
-                          </td>
-
                           {/* ESTADO */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
+                          <td className="px-6 py-5.5 align-middle border-r border-outline-variant/30">
                             {isEditing ? (
                               <span className="font-extrabold text-[10px] text-outline italic">
                                 Auto-calculando...
                               </span>
                             ) : (
-                              <span className={`px-2.5 py-1 rounded-full text-[9px] font-black tracking-wider border uppercase flex items-center gap-1 w-fit ${
+                              <span className={`px-2.5 py-1 rounded-full text-[9px] font-black tracking-wider border uppercase flex items-center gap-1 w-fit shadow-sm ${
                                 getPrinterStatus(printer) === "En Mantenimiento"
                                   ? "bg-blue-500/10 text-blue-600 border border-blue-500/25 animate-pulse-subtle"
                                   : checkPrinterAlerts(printer)
                                     ? "bg-amber-500/10 text-amber-600 border border-amber-500/25"
                                     : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/25"
                               }`}>
-                                <span className="material-symbols-outlined text-[10px]">
+                                <span className="material-symbols-outlined text-[11px]">
                                   {getPrinterStatus(printer) === "En Mantenimiento" ? "build" : checkPrinterAlerts(printer) ? "warning" : "check_circle"}
                                 </span>
-                                {getPrinterStatus(printer)} {getPrinterStatus(printer) === "Operativo" && checkPrinterAlerts(printer) && (
-                                  <span className="text-[8px] lowercase italic font-normal ml-0.5">(con alertas)</span>
+                                <span>{getPrinterStatus(printer)}</span>
+                                {getPrinterStatus(printer) === "Operativo" && checkPrinterAlerts(printer) && (
+                                  <span className="text-[7px] lowercase italic font-normal ml-0.5">(alertas)</span>
                                 )}
                               </span>
                             )}
                           </td>
 
-                          {/* CASO ASIGNADO */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
+                          {/* CASO CAS */}
+                          <td className="px-6 py-5.5 align-middle border-r border-outline-variant/30 max-w-[200px]">
                             {isEditing ? (
-                              <input
-                                type="text"
-                                value={editingRowData.codigo_caso_cas || ""}
-                                onChange={(e) => handleRowDataChange("codigo_caso_cas", e.target.value)}
-                                onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                placeholder="CAS-XXXX"
-                                className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface font-mono font-semibold"
-                              />
+                              <div className="space-y-2">
+                                <input
+                                  type="text"
+                                  value={editingRowData.codigo_caso_cas || ""}
+                                  onChange={(e) => handleRowDataChange("codigo_caso_cas", e.target.value)}
+                                  onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                  placeholder="CAS-XXXX"
+                                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary focus:border-primary text-on-surface font-mono font-semibold"
+                                />
+                                <input
+                                  type="text"
+                                  value={editingRowData.detalle_caso || ""}
+                                  onChange={(e) => handleRowDataChange("detalle_caso", e.target.value)}
+                                  onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
+                                  placeholder="Detalle del caso"
+                                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary focus:border-primary text-on-surface-variant italic"
+                                />
+                              </div>
                             ) : (
-                              printer.codigo_caso_cas ? (
-                                <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded font-mono text-[10px] block w-max max-w-[130px] truncate font-bold" title={printer.codigo_caso_cas}>
-                                  {printer.codigo_caso_cas}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300">-</span>
-                              )
+                              <div className="space-y-2.5">
+                                {printer.codigo_caso_cas ? (
+                                  <>
+                                    <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded font-mono text-[9px] inline-block font-extrabold shadow-sm">
+                                      {printer.codigo_caso_cas}
+                                    </span>
+                                    {printer.detalle_caso && (
+                                      <span className="text-[9.5px] text-on-surface-variant font-medium italic block leading-tight border-l-2 border-primary/20 pl-1.5" title={printer.detalle_caso}>
+                                        {printer.detalle_caso}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-outline-variant italic text-[10px]">-</span>
+                                )}
+                              </div>
                             )}
                           </td>
 
-                          {/* DETALLES DEL CASO */}
-                          <td className="px-4 py-3 align-middle border-r border-b border-slate-200">
+                          {/* OBSERVACIONES */}
+                          <td className="px-6 py-5.5 align-middle border-r border-outline-variant/30 max-w-[220px]">
                             {isEditing ? (
-                              <input
-                                type="text"
-                                value={editingRowData.detalle_caso || ""}
-                                onChange={(e) => handleRowDataChange("detalle_caso", e.target.value)}
+                              <textarea
+                                value={editingRowData.observaciones || ""}
+                                onChange={(e) => handleRowDataChange("observaciones", e.target.value)}
                                 onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
-                                placeholder="Detalle de caso"
-                                className="w-full bg-surface border border-outline-variant rounded-xl px-2 py-1.5 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary text-on-surface-variant italic leading-tight"
+                                placeholder="Notas y observaciones..."
+                                className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-2 text-xs focus:ring-1 focus:ring-primary focus:border-primary text-on-surface resize-y font-medium"
+                                rows={2}
                               />
                             ) : (
-                              printer.detalle_caso ? (
-                                <span className="text-[10px] text-slate-500 italic block max-w-[180px] truncate leading-tight" title={printer.detalle_caso}>
-                                  {printer.detalle_caso}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300">-</span>
-                              )
+                              <p className="text-[10.5px] text-on-surface-variant italic line-clamp-2 leading-relaxed" title={printer.observaciones}>
+                                {printer.observaciones ? `"${printer.observaciones}"` : <span className="text-outline-variant italic">-</span>}
+                              </p>
                             )}
                           </td>
 
                           {/* ACCIONES */}
-                          <td className="px-4 py-3 align-middle border-b border-slate-200 text-center">
+                          <td className="px-6 py-5.5 align-middle text-center pr-6">
                             {isEditing ? (
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
@@ -651,7 +650,7 @@ export default function InventoryView({
                                     setEditingRowId(null);
                                     setEditingRowData({});
                                   }}
-                                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center border border-slate-200 transition-all active:scale-90"
+                                  className="w-8 h-8 rounded-full bg-surface-container-high hover:bg-outline-variant/30 text-on-surface-variant flex items-center justify-center border border-outline-variant/60 transition-all active:scale-90"
                                   title="Cancelar edición"
                                 >
                                   <span className="material-symbols-outlined text-base">close</span>
@@ -659,21 +658,23 @@ export default function InventoryView({
                               </div>
                             ) : (
                               <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartRowEdit(printer)}
-                                  className="w-7 h-7 flex items-center justify-center bg-surface-container-high text-on-surface-variant hover:bg-outline-variant/50 active:scale-90 rounded-full transition-all border border-outline-variant"
-                                  title="Edición rápida"
-                                >
-                                  <span className="material-symbols-outlined text-[15px]">edit</span>
-                                </button>
+                                {isAuthenticated && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartRowEdit(printer)}
+                                    className="w-7 h-7 flex items-center justify-center bg-surface-container-high text-on-surface-variant hover:bg-outline-variant/50 active:scale-90 rounded-full transition-all border border-outline-variant"
+                                    title="Edición rápida"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">edit</span>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditModal(printer)}
                                   className="w-7 h-7 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20 active:scale-90 rounded-full transition-all border border-primary/20"
                                   title="Ver detalles e Historial"
                                 >
-                                  <span className="material-symbols-outlined text-[15px]">visibility</span>
+                                  <span className="material-symbols-outlined text-[14px]">visibility</span>
                                 </button>
                               </div>
                             )}

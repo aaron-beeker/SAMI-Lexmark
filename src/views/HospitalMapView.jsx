@@ -99,7 +99,7 @@ const getDotPosition = (index, total, rx, ry, rw, rh) => {
   return { cx, cy };
 };
 
-export default function HospitalMapView({ printers, getPrinterStatus, checkPrinterAlerts, handleOpenEditModal }) {
+export default function HospitalMapView({ printers, getPrinterStatus, checkPrinterAlerts, handleOpenEditModal, isAuthenticated }) {
   const [activeFloor, setActiveFloor] = useState("Piso 1");
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [selectedPrinterSn, setSelectedPrinterSn] = useState(null);
@@ -513,11 +513,11 @@ export default function HospitalMapView({ printers, getPrinterStatus, checkPrint
 
                   {/* Actions */}
                   <button
-                    onClick={() => handleOpenEditModal(printer)}
-                    className="w-full mt-6 py-3 bg-primary text-on-primary rounded-xl text-xs font-bold hover:bg-primary/95 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 shadow-md"
+                    onClick={() => setSelectedPrinterSn(null)}
+                    className="w-full mt-6 py-2.5 border border-outline-variant rounded-xl text-xs font-bold text-on-surface-variant hover:bg-surface-container-low active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
                   >
-                    <span className="material-symbols-outlined text-sm">edit</span>
-                    Editar / Registrar Lectura
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    {selectedRoomId ? "Volver a Detalles de Área" : "Volver a Vista General"}
                   </button>
                 </div>
               );
