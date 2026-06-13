@@ -36,16 +36,7 @@ export default function Sidebar({ currentTab, setCurrentTab, onOpenCreateModal, 
         ))}
       </nav>
 
-      <div className="p-4 border-t border-outline-variant/60">
-        <button
-          type="button"
-          onClick={onOpenCreateModal}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary/10 text-primary border border-primary/20 rounded-xl font-extrabold text-xs hover:bg-primary/20 active:scale-95 transition-all shadow-sm"
-        >
-          <span className="material-symbols-outlined text-lg">add</span>
-          <span>Registrar Impresora</span>
-        </button>
-      </div>
+
     </aside>
   );
 }

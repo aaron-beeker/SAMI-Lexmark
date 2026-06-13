@@ -79,14 +79,16 @@ function buildSystemPrompt() {
        ⚠️ ADVERTENCIA CRÍTICA: En la pantalla LCD, la Unidad de Imagen es la segunda barra y el Kit de Mantenimiento es la tercera. ¡No las inviertas!
 
     CÓMO LEER LAS BARRAS Y ESTIMAR EL NIVEL:
-    - En las HOJAS IMPRESAS, las etiquetas de escala "0%" (a la izquierda de la barra) y "100%" (a la derecha de la barra) son marcas fijas impresas y NO representan el nivel actual. ¡IGNÓRALAS por completo! No uses 0% o 100% solo porque ves esas etiquetas impresas.
+    - En las HOJAS IMPRESAS, las etiquetas de escala "0%" (a la izquierda de la barra) y "100%" (a la derecha de la barra) son marcas fijas impresas y NO representan el nivel actual. ¡IGNÓRALAS por defecto! Sin embargo, si la barra horizontal de progreso de un consumible está completamente llena/negra de extremo a extremo (cubriendo todo el recorrido de izquierda a derecha), significa que el nivel real de ese consumible es exactamente 100%.
     - IGNORA por completo los números de "Capacidad" y "Caras por consumible" para calcular los niveles. Son contadores históricos y no reflejan el nivel actual del chip.
     - El nivel real de consumible se mide ÚNICAMENTE por el largo de la BARRA NEGRA HORIZONTAL:
+      * Si la barra está totalmente negra de izquierda a derecha, el nivel es 100%.
       * Barra de Tóner (1ra): La barra negra llena casi toda la longitud de izquierda a derecha (aproximadamente 95%).
       * Barra de Kit Mantenimiento (2da): La barra negra se llena desde la izquierda hasta un poco más de la mitad (aproximadamente 60%). El resto está en blanco.
       * Barra de Unidad Imagen (3ra): La barra negra se llena desde la izquierda hasta poco más de un tercio (aproximadamente 35%). El resto está en blanco.
     - En la PANTALLA LCD:
       * Estima el largo de la barra de color (verde, azul, etc.) sobre el fondo oscuro.
+      * Si la barra está completamente llena, es 100%.
       * Si la barra está casi vacía, es ~5% o ~10%.
       * Si está llena un poco más de la mitad, es ~60%.
       
@@ -152,7 +154,7 @@ function buildSystemPrompt() {
       "toner_nivel": number,
       "mantenimiento_kit_nivel": number,
       "unidad_imagen_nivel": number,
-      "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
+      "estado_funcionamiento": "Operativo|En Mantenimiento",
       "observaciones": "string",
       "codigo_caso_cas": "string",
       "detalle_caso": "string"
@@ -341,7 +343,32 @@ async function performOCRFallback(adjuntos = [], impresorasRegistradas = []) {
   }
 }
 
-function parseOCRText(text, impresorasRegistradas = []) {
+export function editDistance(s1, s2) {
+  s1 = s1.toLowerCase();
+  s2 = s2.toLowerCase();
+  const costs = [];
+  for (let i = 0; i <= s1.length; i++) {
+    let lastValue = i;
+    for (let j = 0; j <= s2.length; j++) {
+      if (i === 0) {
+        costs[j] = j;
+      } else {
+        if (j > 0) {
+          let newValue = costs[j - 1];
+          if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+          }
+          costs[j - 1] = lastValue;
+          lastValue = newValue;
+        }
+      }
+    }
+    if (i > 0) costs[s2.length] = lastValue;
+  }
+  return costs[s2.length];
+}
+
+export function parseOCRText(text, impresorasRegistradas = []) {
   const lines = text.replace(/\r/g, "").split("\n").map(l => l.trim()).filter(Boolean);
   const fullText = lines.join(" ");
 
@@ -349,19 +376,63 @@ function parseOCRText(text, impresorasRegistradas = []) {
   let serial = "";
   const serialPatterns = [
     /[Nn][uú]mero\s*de\s*serie[:\s]*([A-Za-z0-9]{10,15})/i,
-    /(?:S\/N|Serie)[:\s]*([A-Za-z0-9]{10,15})/i,
-    /\b(7\d{12}[A-Fa-f0-9]{0,3})\b/,
-    /\b([A-Z0-9]{10,14}[A-Fa-f][A-Z0-9]{0,4})\b/i
+    /(?:S\/N|Serie|Serial(?:\s*Number)?|Serial\s*No\.?)[:\s]*([A-Za-z0-9]{10,15})/i,
+    /\b(7[A-Za-z0-9]{11,14})\b/i, // Lexmark style starting with 7
+    /\b([A-Za-z0-9]{12,15})\b/i    // Any alphanumeric code of typical serial length
   ];
+
   for (const pat of serialPatterns) {
     const m = fullText.match(pat);
     if (m) {
-      serial = m[1].toUpperCase();
-      break;
+      const candidate = m[1].toUpperCase();
+      if (/\d/.test(candidate) && /[A-Z]/.test(candidate) && candidate.length >= 10) {
+        serial = candidate;
+        break;
+      }
+    }
+  }
+
+  // Fuzzy matching or word cleaning if exact match not found
+  if (!serial) {
+    const words = fullText.split(/[\s,.:;()|\[\]/\\]+/);
+    for (const word of words) {
+      const cleanWord = word.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (cleanWord.length >= 11 && cleanWord.length <= 15 && /\d/.test(cleanWord) && /[A-Z]/.test(cleanWord)) {
+        if (/^[71T]/.test(cleanWord)) {
+          serial = cleanWord;
+          break;
+        }
+      }
     }
   }
 
   let matchedPrinter = null;
+  if (serial) {
+    matchedPrinter = impresorasRegistradas.find(
+      p => p.id_serie.toUpperCase() === serial.toUpperCase()
+    );
+
+    if (!matchedPrinter && impresorasRegistradas.length > 0) {
+      let bestMatch = null;
+      let minDistance = 999;
+      for (const printer of impresorasRegistradas) {
+        const regSerial = printer.id_serie.toUpperCase();
+        if (Math.abs(regSerial.length - serial.length) <= 2) {
+          const dist = editDistance(regSerial, serial);
+          if (dist <= 2 && dist < minDistance) {
+            minDistance = dist;
+            bestMatch = printer;
+          }
+        }
+      }
+      if (bestMatch) {
+        console.log(`[OCR] Coincidencia difusa encontrada: ${serial} -> ${bestMatch.id_serie} (distancia: ${minDistance})`);
+        serial = bestMatch.id_serie;
+        matchedPrinter = bestMatch;
+      }
+    }
+  }
+
   if (!serial) {
     // Look for any 4-char alphanumeric word
     const words = fullText.split(/[\s,.:;]+/);
@@ -377,10 +448,6 @@ function parseOCRText(text, impresorasRegistradas = []) {
         }
       }
     }
-  } else {
-    matchedPrinter = impresorasRegistradas.find(
-      p => p.id_serie.toUpperCase() === serial.toUpperCase()
-    );
   }
 
   // Fallback by area name
@@ -414,19 +481,74 @@ function parseOCRText(text, impresorasRegistradas = []) {
   let unit = null;
   let maint = null;
 
-  const tonerMatch = fullText.match(/(?:toner|tóner|cartucho|tinta)[^0-9%]*(\d{1,3})\s*%/i) ||
-                     fullText.match(/(\d{1,3})\s*%\s*[^0-9%]*(?:toner|tóner|cartucho|tinta)/i);
-  if (tonerMatch) toner = parseInt(tonerMatch[1]);
+  // Find keyword indices to delimit sections
+  const tonerKeywords = [/cartucho negro/i, /black cartridge/i, /t[oó]ner/i, /cartucho/i, /tinta/i];
+  const maintKeywords = [/kit\s*(?:de\s*)?mantenimiento/i, /maintenance\s*kit/i, /mantenimiento/i, /fusi/i];
+  const unitKeywords = [/unidad\s*(?:de\s*)?imagen/i, /imaging\s*unit/i, /unidad\s*tambor/i, /tambor/i, /drum/i, /u\.img/i];
 
-  const unitMatch = fullText.match(/(?:unidad|imagen|tambor|drum|u\.img|u\s+img)[^0-9%]*(\d{1,3})\s*%/i) ||
-                    fullText.match(/(\d{1,3})\s*%\s*[^0-9]*(?:unidad|imagen|tambor|drum|u\.img|u\s+img)/i);
-  if (unitMatch) unit = parseInt(unitMatch[1]);
+  function findFirstKeywordIndex(keywords, text) {
+    for (const kw of keywords) {
+      const match = text.match(kw);
+      if (match) return match.index;
+    }
+    return -1;
+  }
 
-  const maintMatch = fullText.match(/(?:mantenimiento|kit|fusi|mantenimiento_kit_nivel)[^0-9%]*(\d{1,3})\s*%/i) ||
-                     fullText.match(/(\d{1,3})\s*%\s*[^0-9]*(?:mantenimiento|kit|fusi|mantenimiento_kit_nivel)/i);
-  if (maintMatch) maint = parseInt(maintMatch[1]);
+  const tonerIdx = findFirstKeywordIndex(tonerKeywords, fullText);
+  const maintIdx = findFirstKeywordIndex(maintKeywords, fullText);
+  const unitIdx = findFirstKeywordIndex(unitKeywords, fullText);
 
-  // Fallback printed stats page order: Toner, Kit, Unit
+  // Create ranges of sections by sorting found indices
+  const sections = [];
+  if (tonerIdx !== -1) sections.push({ name: "toner", index: tonerIdx });
+  if (maintIdx !== -1) sections.push({ name: "maint", index: maintIdx });
+  if (unitIdx !== -1) sections.push({ name: "unit", index: unitIdx });
+
+  // Sort sections by order of appearance
+  sections.sort((a, b) => a.index - b.index);
+
+  function extractLevelFromSectionText(sectionText) {
+    const pctPattern = /(\d{1,3})\s*%/g;
+    const percentages = [];
+    let match;
+    while ((match = pctPattern.exec(sectionText)) !== null) {
+      const val = parseInt(match[1]);
+      if (val >= 0 && val <= 100) {
+        percentages.push(val);
+      }
+    }
+
+    if (percentages.length === 0) return null;
+
+    const hasZero = percentages.includes(0);
+    const hasHundred = percentages.includes(100);
+    const isLowText = /reemplace|reemplazar|bajo|vac[ií]o|empty|low|very\s*low|exhausted/i.test(sectionText);
+
+    if (hasZero && hasHundred && percentages.length === 2) {
+      return isLowText ? 0 : 100;
+    }
+
+    const intermediate = percentages.find(p => p !== 0 && p !== 100);
+    if (intermediate !== undefined) return intermediate;
+
+    if (percentages.length === 1) return percentages[0];
+
+    return percentages[0];
+  }
+
+  // Assign text to each section and extract level
+  for (let i = 0; i < sections.length; i++) {
+    const start = sections[i].index;
+    const end = (i + 1 < sections.length) ? sections[i+1].index : fullText.length;
+    const sectionText = fullText.substring(start, end);
+
+    const level = extractLevelFromSectionText(sectionText);
+    if (sections[i].name === "toner") toner = level;
+    if (sections[i].name === "maint") maint = level;
+    if (sections[i].name === "unit") unit = level;
+  }
+
+  // Fallback if no levels were detected via sections
   if (toner === null && unit === null && maint === null) {
     const percentages = [];
     const pctPattern = /(\d{1,3})\s*%/g;
@@ -465,9 +587,11 @@ function parseOCRText(text, impresorasRegistradas = []) {
 
   // Determine status
   let estado = "Operativo";
-  const levelIsLow = (toner !== null && toner <= 15) || (unit !== null && unit <= 15) || (maint !== null && maint <= 15);
   const levelIsZero = toner === 0 || unit === 0 || maint === 0;
-  if (levelIsLow || levelIsZero) estado = "Advertencia";
+  const isSoporte = area && area.toLowerCase().includes("soporte");
+  if (isSoporte && levelIsZero) {
+    estado = "En Mantenimiento";
+  }
 
   return {
     accion: action,
@@ -756,7 +880,7 @@ export async function analizarImportacionExcel(filasJson) {
        - Clasifica "ubicacion_entidad" en "Hospital" o "MUR":
          - Si el área o el texto contiene "MUR", pon "MUR".
          - De lo contrario, pon "Hospital" (incluyendo si el área es "Soporte").
-       - Determina "estado_funcionamiento" según la lógica: "Inoperativo" (si está en Soporte y tiene observaciones de fallas graves o consumibles al 0%), "Advertencia" (si algún consumible es <= 15% o tiene observaciones/detalles y no está inoperativo), "Operativo" (de lo contrario).
+       - Determina "estado_funcionamiento" según la lógica ITIL: "En Mantenimiento" (si está en Soporte y tiene observaciones de fallas graves o consumibles al 0%), de lo contrario "Operativo" (incluso si tiene consumibles bajos o fallas menores, ya que bajo ITIL solo existen los estados Operativo y En Mantenimiento).
        - Extrae la dirección IP en el campo "ip" de cada fila:
          * Si se especifica una dirección IP válida (ej. "192.168.24.120"), colócala en "ip".
          * Si se especifica "USB" (de forma exacta o con variantes como "cableado por usb"), establece "ip" como "USB".
@@ -769,7 +893,7 @@ export async function analizarImportacionExcel(filasJson) {
           * Si tras la limpieza el campo solo contenía datos de consumibles o queda vacío, establécelo como una cadena vacía "".
     2. Generar un informe de análisis (reporte_resumen) en lenguaje natural y profesional (español) para el técnico. Este reporte debe resumir:
        - El número total de equipos analizados.
-       - Cuántos equipos están operativos, cuántos en advertencia y cuántos inoperativos.
+       - Cuántos equipos están operativos (incluyendo los que tienen alertas) y cuántos en mantenimiento.
        - Qué equipos requieren atención inmediata (por S/N y área).
        - Alguna observación relevante o recomendación sobre el stock de repuestos para estos modelos.
 
@@ -785,7 +909,7 @@ export async function analizarImportacionExcel(filasJson) {
           "toner_nivel": number,
           "unidad_imagen_nivel": number,
           "mantenimiento_kit_nivel": number,
-          "estado_funcionamiento": "Operativo|Inoperativo|Advertencia",
+          "estado_funcionamiento": "Operativo|En Mantenimiento",
           "observaciones": "string",
           "codigo_caso_cas": "string",
           "detalle_caso": "string"

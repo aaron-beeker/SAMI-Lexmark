@@ -34,18 +34,19 @@ export default function PrinterModal({
   selectedPrinterHistory,
   handleDeleteHistoryItem,
   handleDeletePrinter,
-  savingEdit
+  savingEdit,
+  checkPrinterAlerts
 }) {
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm transition-opacity" onClick={handleCloseEditModal}></div>
 
       {/* Modal Container */}
       <form
         onSubmit={handleSavePrinterChanges}
-        className="absolute bottom-0 left-0 w-full bg-surface rounded-t-3xl p-6 shadow-2xl transition-transform max-w-lg mx-auto left-1/2 -translate-x-1/2 flex flex-col max-h-[85vh] overflow-y-auto scrollbar-hide border border-outline-variant/30 z-10"
+        className="absolute bottom-0 sm:bottom-auto left-0 sm:left-auto w-full bg-surface rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 shadow-2xl transition-all max-w-lg sm:max-w-2xl mx-auto sm:my-8 left-1/2 sm:left-auto -translate-x-1/2 sm:translate-x-0 flex flex-col max-h-[85vh] sm:max-h-[90vh] overflow-y-auto scrollbar-hide border border-outline-variant/30 z-10"
       >
         <div className="w-12 h-1 bg-outline-variant rounded-full mx-auto mb-6 shrink-0"></div>
 
@@ -64,18 +65,28 @@ export default function PrinterModal({
               {isCreateMode && (
                 <span className="text-[10px] font-bold text-outline px-2 py-0.5 bg-surface-variant rounded-md">{editModelo}</span>
               )}
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 ${
-                editFuncionamiento === "Inoperativo"
-                  ? "bg-rose-500/10 text-rose-600 border border-rose-500/20"
-                  : editFuncionamiento === "Advertencia"
-                    ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-                    : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                }`}>
-                <span className="material-symbols-outlined text-[11px]">
-                  {editFuncionamiento === "Inoperativo" ? "cancel" : editFuncionamiento === "Advertencia" ? "warning" : "check_circle"}
-                </span>
-                {editFuncionamiento} {editFuncionamiento !== "Inoperativo" ? ((editUbicacion || "Hospital") === "Hospital" && !(editArea || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
-              </span>
+              {(() => {
+                let status = editFuncionamiento === "Advertencia" ? "Operativo" : editFuncionamiento;
+                if (status === "Inoperativo") {
+                  status = "En Mantenimiento";
+                }
+                const hasAlerts = editFuncionamiento === "Advertencia" || (selectedPrinter && checkPrinterAlerts(selectedPrinter));
+                const isMaint = status === "En Mantenimiento";
+                return (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 ${
+                    isMaint
+                      ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                      : hasAlerts
+                        ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                        : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                    }`}>
+                    <span className="material-symbols-outlined text-[11px]">
+                      {isMaint ? "build" : hasAlerts ? "warning" : "check_circle"}
+                    </span>
+                    {status} {status === "Operativo" && hasAlerts && <span className="text-[9px] lowercase italic font-normal ml-0.5">(con alertas)</span>} {status !== "En Mantenimiento" ? ((editUbicacion || "Hospital") === "Hospital" && !(editArea || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
+                  </span>
+                );
+              })()}
             </div>
           </div>
           <button
@@ -89,7 +100,7 @@ export default function PrinterModal({
 
         {/* Fields */}
         <div className="space-y-4 mb-6 flex-grow">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Número de Serie</label>
               <input
@@ -114,7 +125,7 @@ export default function PrinterModal({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Área de Ubicación</label>
               <input
@@ -189,7 +200,7 @@ export default function PrinterModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Dirección IP</label>
               <input
@@ -230,67 +241,7 @@ export default function PrinterModal({
               className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm resize-none h-16"
               placeholder="Notas o fallas (Ej. Se traba papel...)"
             />
-          </div>
-
-          {/* Operational Status Override Controls */}
-          <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/30 space-y-3">
-            <div className="flex justify-between items-center">
-              <label className="text-[11.5px] font-bold text-outline uppercase tracking-wider">
-                Estado de Funcionamiento
-              </label>
-              <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-primary select-none">
-                <input
-                  type="checkbox"
-                  checked={editFuncionamientoAuto}
-                  onChange={(e) => setEditFuncionamientoAuto(e.target.checked)}
-                  className="rounded border-outline-variant text-primary focus:ring-primary h-3.5 w-3.5"
-                />
-                Auto-calcular
-              </label>
             </div>
-            
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={editFuncionamientoAuto}
-                onClick={() => setEditFuncionamiento("Operativo")}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
-                  editFuncionamiento === "Operativo"
-                    ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-700 font-extrabold"
-                    : "bg-surface text-on-surface-variant border-outline-variant opacity-60"
-                } ${editFuncionamientoAuto ? "cursor-not-allowed opacity-50 bg-emerald-500/5 border-emerald-500/10 text-emerald-600/70" : "active:scale-[0.98]"}`}
-              >
-                <span className="material-symbols-outlined text-[15px]">check_circle</span>
-                Operativo
-              </button>
-              <button
-                type="button"
-                disabled={editFuncionamientoAuto}
-                onClick={() => setEditFuncionamiento("Advertencia")}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
-                  editFuncionamiento === "Advertencia"
-                    ? "bg-amber-500/15 border-amber-500/30 text-amber-700 font-extrabold"
-                    : "bg-surface text-on-surface-variant border-outline-variant opacity-60"
-                } ${editFuncionamientoAuto ? "cursor-not-allowed opacity-50 bg-amber-500/5 border-amber-500/10 text-amber-600/70" : "active:scale-[0.98]"}`}
-              >
-                <span className="material-symbols-outlined text-[15px]">warning</span>
-                Advertencia
-              </button>
-              <button
-                type="button"
-                disabled={editFuncionamientoAuto}
-                onClick={() => setEditFuncionamiento("Inoperativo")}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
-                  editFuncionamiento === "Inoperativo"
-                    ? "bg-rose-500/15 border-rose-500/30 text-rose-700 font-extrabold"
-                    : "bg-surface text-on-surface-variant border-outline-variant opacity-60"
-                } ${editFuncionamientoAuto ? "cursor-not-allowed opacity-50 bg-rose-500/5 border-rose-500/10 text-rose-600/70" : "active:scale-[0.98]"}`}
-              >
-                <span className="material-symbols-outlined text-[15px]">cancel</span>
-                Inoperativo
-              </button>
-            </div>
-          </div>
 
           {/* Individual History Timeline in modal */}
           {selectedPrinterHistory.length > 0 && (
@@ -312,15 +263,22 @@ export default function PrinterModal({
                             Manual
                           </span>
                         )}
-                        <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider border ${
-                          (hist.estado_funcionamiento || hist.estado_criticidad) === "Inoperativo" || (hist.estado_funcionamiento || hist.estado_criticidad) === "Crítico"
-                            ? "bg-rose-500/10 text-rose-600 border border-rose-500/20"
-                            : (hist.estado_funcionamiento || hist.estado_criticidad) === "Advertencia"
-                              ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-                              : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                          }`}>
-                          {hist.estado_funcionamiento || hist.estado_criticidad || "Operativo"}
-                        </span>
+                        {(() => {
+                          const histStatus = hist.estado_funcionamiento || hist.estado_criticidad || "Operativo";
+                          const isInop = histStatus === "Inoperativo" || histStatus === "Crítico" || histStatus === "En Mantenimiento";
+                          const isAdv = histStatus === "Advertencia";
+                          return (
+                            <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider border ${
+                              isInop
+                                ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                                : isAdv
+                                  ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                  : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                              }`}>
+                              {isInop ? "En Mantenimiento" : isAdv ? "Operativo (con alertas)" : "Operativo"}
+                            </span>
+                          );
+                        })()}
                         <span className="text-[10px] text-outline font-medium">
                           {hist.tipo_actualizacion || "Manual"}
                         </span>
@@ -384,36 +342,16 @@ export default function PrinterModal({
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col gap-3 pb-8 shrink-0">
-          <div className="flex gap-3">
-            {!isCreateMode && (
-              <button
-                type="button"
-                disabled={savingEdit}
-                onClick={handleDeletePrinter}
-                className="flex-1 py-3.5 bg-error-container text-on-error-container border border-error/20 font-bold rounded-2xl active:scale-95 transition-all hover:bg-error-container/80 text-sm flex items-center justify-center gap-1.5"
-              >
-                <span className="material-symbols-outlined text-sm">delete</span>
-                <span>Eliminar</span>
-              </button>
-            )}
-            <button
-              type="button"
-              className="flex-1 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm"
-              onClick={handleCloseEditModal}
-            >
-              Cancelar
-            </button>
-          </div>
+        <div className="flex flex-col-reverse sm:flex-row-reverse gap-3 pb-4 sm:pb-0 shrink-0">
           <button
             type="submit"
             disabled={savingEdit}
-            className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
+            className="w-full sm:w-auto px-6 py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
           >
             {savingEdit ? (
               <>
                 <span className="material-symbols-outlined text-sm animate-spin">sync</span>
-                Guardando...
+                <span>Guardando...</span>
               </>
             ) : (
               <>
@@ -422,6 +360,24 @@ export default function PrinterModal({
               </>
             )}
           </button>
+          <button
+            type="button"
+            className="w-full sm:w-auto px-6 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm"
+            onClick={handleCloseEditModal}
+          >
+            Cancelar
+          </button>
+          {!isCreateMode && (
+            <button
+              type="button"
+              disabled={savingEdit}
+              onClick={handleDeletePrinter}
+              className="w-full sm:w-auto px-6 py-3.5 bg-error-container text-on-error-container border border-error/20 font-bold rounded-2xl active:scale-95 transition-all hover:bg-error-container/80 text-sm flex items-center justify-center gap-1.5 sm:mr-auto"
+            >
+              <span className="material-symbols-outlined text-sm">delete</span>
+              <span>Eliminar</span>
+            </button>
+          )}
         </div>
       </form>
     </div>

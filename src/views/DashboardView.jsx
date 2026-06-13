@@ -15,6 +15,7 @@ export default function DashboardView({
   kpiHospitalEnSoporte,
   kpiMurTotal,
   getPrinterStatus,
+  checkPrinterAlerts,
   setCurrentTab,
   setFilterCriticidad,
   handleOpenEditModal,
@@ -65,23 +66,23 @@ export default function DashboardView({
         >
           <p className="text-amber-600 font-semibold flex items-center gap-1.5 text-xs">
             <span className="material-symbols-outlined text-sm">warning</span>
-            Advertencia
+            Con Alertas
           </p>
           <span className="text-3xl font-extrabold text-amber-700">{loadingPrinters ? "..." : kpiAdvertencias}</span>
         </div>
 
         <div
           onClick={() => {
-            setFilterCriticidad("Inoperativo");
+            setFilterCriticidad("En Mantenimiento");
             setCurrentTab("inventario");
           }}
-          className="p-5 bg-rose-500/10 border border-rose-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
+          className="p-5 bg-blue-500/10 border border-blue-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
         >
-          <p className="text-rose-600 font-semibold flex items-center gap-1.5 text-xs">
-            <span className="material-symbols-outlined text-sm">cancel</span>
-            Inoperativas
+          <p className="text-blue-600 font-semibold flex items-center gap-1.5 text-xs">
+            <span className="material-symbols-outlined text-sm">build</span>
+            En Mantenimiento
           </p>
-          <span className="text-3xl font-extrabold text-rose-700">{loadingPrinters ? "..." : kpiInoperativas}</span>
+          <span className="text-3xl font-extrabold text-blue-700">{loadingPrinters ? "..." : kpiInoperativas}</span>
         </div>
       </section>
 
@@ -89,6 +90,7 @@ export default function DashboardView({
       <HospitalMapView
         printers={printers}
         getPrinterStatus={getPrinterStatus}
+        checkPrinterAlerts={checkPrinterAlerts}
         handleOpenEditModal={handleOpenEditModal}
       />
 
@@ -166,14 +168,14 @@ export default function DashboardView({
             <div className="space-y-3">
               {loadingPrinters ? (
                 <div className="p-8 text-center text-outline-variant">Cargando datos...</div>
-              ) : printers.filter(p => getPrinterStatus(p) === "Advertencia").length === 0 ? (
+              ) : printers.filter(p => getPrinterStatus(p) === "Operativo" && checkPrinterAlerts(p)).length === 0 ? (
                 <div className="p-8 text-center bg-surface-container-lowest border border-outline-variant rounded-2xl text-on-surface-variant flex flex-col items-center gap-2">
                   <span className="material-symbols-outlined text-green-500 text-3xl">check_circle</span>
-                  <p className="font-semibold">Todos los equipos están operativos</p>
+                  <p className="font-semibold">No hay equipos con alertas activas</p>
                 </div>
               ) : (
                 printers
-                  .filter(p => getPrinterStatus(p) === "Advertencia")
+                  .filter(p => getPrinterStatus(p) === "Operativo" && checkPrinterAlerts(p))
                   .slice(0, 5)
                   .map((printer) => {
                     const status = getPrinterStatus(printer);
@@ -208,7 +210,7 @@ export default function DashboardView({
                             </div>
                             <span className={`px-2 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${alertColor.badge} ${alertColor.pulse}`}>
                               <span className="material-symbols-outlined text-[11px]">{alertColor.icon}</span>
-                              {status}
+                              {status} {status === "Operativo" && checkPrinterAlerts(printer) && <span className="text-[9px] lowercase italic font-normal ml-0.5">(con alertas)</span>}
                             </span>
                           </div>
 

@@ -220,6 +220,7 @@ export function useAppController() {
     setEditFuncionamientoAuto: printers.setEditFuncionamientoAuto,
     savingEdit: printers.savingEdit,
     isCreateMode: printers.isCreateMode,
+    checkPrinterAlerts: printers.checkPrinterAlerts,
     getPrinterStatus: printers.getPrinterStatus,
     isPrinterInoperative: printers.isPrinterInoperative,
     handleOpenEditModal: printers.handleOpenEditModal,

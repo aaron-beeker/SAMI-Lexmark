@@ -115,15 +115,22 @@ export default function HistoryView({ loadingPrinters, generalHistory }) {
                   </div>
                   <div>
                     <span className="text-[9px] font-bold text-outline block uppercase">Estado</span>
-                    <span className={`font-semibold ${
-                      (log.estado_funcionamiento || log.estado_criticidad) === "Inoperativo" || (log.estado_funcionamiento || log.estado_criticidad) === "Crítico"
-                        ? "text-rose-600 font-extrabold"
-                        : (log.estado_funcionamiento || log.estado_criticidad) === "Advertencia"
-                          ? "text-amber-600 font-extrabold"
-                          : "text-emerald-600 font-extrabold"
-                    }`}>
-                      {log.estado_funcionamiento || log.estado_criticidad || "Operativo"}
-                    </span>
+                    {(() => {
+                      const histStatus = log.estado_funcionamiento || log.estado_criticidad || "Operativo";
+                      const isInop = histStatus === "Inoperativo" || histStatus === "Crítico" || histStatus === "En Mantenimiento";
+                      const isAdv = histStatus === "Advertencia";
+                      return (
+                        <span className={`font-semibold ${
+                          isInop
+                            ? "text-blue-600 font-extrabold"
+                            : isAdv
+                              ? "text-amber-600 font-extrabold"
+                              : "text-emerald-600 font-extrabold"
+                        }`}>
+                          {isInop ? "En Mantenimiento" : isAdv ? "Operativo (con alertas)" : "Operativo"}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 

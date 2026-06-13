@@ -752,7 +752,7 @@ export function useChat() {
           toner_nivel: 0,
           unidad_imagen_nivel: 0,
           mantenimiento_kit_nivel: 0,
-          estado_funcionamiento: "Inoperativo",
+          estado_funcionamiento: "En Mantenimiento",
           estado_criticidad: "Eliminado",
           observaciones: `Impresora eliminada vía chat de IA.`,
           codigo_caso_cas: matchedPrinter.codigo_caso_cas || "",

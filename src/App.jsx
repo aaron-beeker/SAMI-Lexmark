@@ -15,7 +15,7 @@ export default function App() {
   const c = useAppController();
 
   return (
-    <div className="bg-background text-on-background min-h-screen pb-24 font-body-md text-body-md overflow-x-hidden flex flex-row">
+    <div className="bg-background text-on-background h-screen font-body-md text-body-md overflow-hidden flex flex-row">
       {/* Sidebar navigation on Desktop */}
       <Sidebar 
         currentTab={c.currentTab} 
@@ -25,13 +25,13 @@ export default function App() {
       />
 
       {/* Main Panel */}
-      <div className="flex-grow flex flex-col min-w-0 min-h-screen">
+      <div className="flex-grow flex flex-col min-w-0 h-screen overflow-hidden">
         <TopAppBar 
           currentTab={c.currentTab} 
           setCurrentTab={c.setCurrentTab} 
         />
 
-        <main className="flex-grow p-4 md:p-8 max-w-lg md:max-w-7xl mx-auto w-full space-y-6 pb-6">
+        <main className="flex-grow overflow-y-auto p-4 md:p-8 max-w-lg md:max-w-7xl mx-auto w-full space-y-6 pb-24 md:pb-8">
           {c.currentTab === "dashboard" && (
             <DashboardView
               printers={c.printers}
@@ -46,6 +46,7 @@ export default function App() {
               kpiHospitalEnSoporte={c.kpiHospitalEnSoporte}
               kpiMurTotal={c.kpiMurTotal}
               getPrinterStatus={c.getPrinterStatus}
+              checkPrinterAlerts={c.checkPrinterAlerts}
               setCurrentTab={c.setCurrentTab}
               setFilterCriticidad={c.setFilterCriticidad}
               handleOpenEditModal={c.handleOpenEditModal}
@@ -77,6 +78,7 @@ export default function App() {
               handleRowKeyDown={c.handleRowKeyDown}
               handleOpenEditModal={c.handleOpenEditModal}
               getPrinterStatus={c.getPrinterStatus}
+              checkPrinterAlerts={c.checkPrinterAlerts}
               currentPage={c.currentPage}
               setCurrentPage={c.setCurrentPage}
               totalPages={c.totalPages}
@@ -198,6 +200,7 @@ export default function App() {
           setEditFuncionamiento={c.setEditFuncionamiento}
           editFuncionamientoAuto={c.editFuncionamientoAuto}
           setEditFuncionamientoAuto={c.setEditFuncionamientoAuto}
+          checkPrinterAlerts={c.checkPrinterAlerts}
           selectedPrinterHistory={c.selectedPrinterHistory}
           handleDeleteHistoryItem={c.handleDeleteHistoryItem}
           handleDeletePrinter={c.handleDeletePrinter}

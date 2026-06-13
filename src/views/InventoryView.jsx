@@ -22,6 +22,7 @@ export default function InventoryView({
   handleRowKeyDown,
   handleOpenEditModal,
   getPrinterStatus,
+  checkPrinterAlerts,
   currentPage,
   setCurrentPage,
   totalPages,
@@ -61,7 +62,7 @@ export default function InventoryView({
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-outline material-symbols-outlined">search</span>
             <input
               type="text"
-              placeholder="Buscar serie, área, IP, estado... Usa & para AND, ! para NO (ej: operativa & !soporte)"
+              placeholder="Buscar por serie, modelo, área, IP o estado..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-primary focus:border-primary font-body-md"
@@ -81,8 +82,8 @@ export default function InventoryView({
             {[
               { id: "all", label: "Todas" },
               { id: "Operativo", label: "Operativas" },
-              { id: "Advertencia", label: "Advertencias" },
-              { id: "Inoperativo", label: "Inoperativas" }
+              { id: "Advertencia", label: "Con Alertas" },
+              { id: "En Mantenimiento", label: "En Mantenimiento" }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -101,50 +102,86 @@ export default function InventoryView({
       </div>
 
       {/* Active Search/Filter Summary Counter */}
-      <div className="bg-surface-container-low border border-outline-variant/60 rounded-2xl p-3.5 shadow-sm space-y-2.5 text-xs animate-fade-in">
-        <div className="flex justify-between items-center border-b border-outline-variant/20 pb-2">
-          <span className="font-bold text-on-surface flex items-center gap-1.5 text-xs uppercase tracking-wider text-outline">
-            <span className="material-symbols-outlined text-sm text-primary">analytics</span>
+      <div className="bg-surface-container-low border border-outline-variant/60 rounded-2xl p-4.5 shadow-sm space-y-4 text-xs animate-fade-in">
+        <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+          <span className="font-bold text-on-surface flex items-center gap-2 text-xs uppercase tracking-wider text-outline">
+            <span className="material-symbols-outlined text-base text-primary">analytics</span>
             {searchText.trim() !== "" ? "Resultado de Búsqueda" : "Resumen del Listado"}
           </span>
-          <span className="bg-primary-fixed text-primary px-2.5 py-0.5 rounded-full font-extrabold text-[10px]">
+          <span className="bg-primary text-on-primary px-3 py-1 rounded-full font-black text-[11px] shadow-sm">
             {filteredPrinters.length} Impresora{filteredPrinters.length !== 1 ? 's' : ''}
           </span>
         </div>
         
-        <div className="grid grid-cols-2 gap-4 text-[11px]">
-          {/* Breakdown by Status */}
-          <div className="space-y-1">
-            <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Por Estado</span>
-            <div className="flex flex-wrap gap-1">
-              <span className="bg-emerald-500/10 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-500/20 font-semibold text-[10px]">
-                Operativas: {filteredPrinters.filter(p => getPrinterStatus(p) === "Operativo").length}
-              </span>
-              <span className="bg-amber-500/10 text-amber-700 px-1.5 py-0.5 rounded border border-amber-500/20 font-semibold text-[10px]">
-                Advertencias: {filteredPrinters.filter(p => getPrinterStatus(p) === "Advertencia").length}
-              </span>
-              <span className="bg-rose-500/10 text-rose-700 px-1.5 py-0.5 rounded border border-rose-500/20 font-semibold text-[10px]">
-                Inoperativas: {filteredPrinters.filter(p => getPrinterStatus(p) === "Inoperativo").length}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Panel 1: Filter Context Card */}
+          <div className="bg-surface-container-lowest p-3.5 rounded-2xl border border-outline-variant/30 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-lg">print</span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Visualizando</span>
+              <span className="text-xs font-black text-on-surface leading-tight">
+                {filterCriticidad === "all"
+                  ? "Todo el Inventario"
+                  : filterCriticidad === "Operativo"
+                    ? "Equipos Operativos"
+                    : filterCriticidad === "Advertencia"
+                      ? "Equipos con Alertas"
+                      : "Equipos en Mantenimiento"}
               </span>
             </div>
           </div>
 
-          {/* Breakdown by Model */}
-          <div className="space-y-1 border-l border-outline-variant/20 pl-3">
-            <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Por Modelo</span>
-            <div className="space-y-0.5 text-on-surface-variant font-mono">
-              <div className="flex justify-between">
-                <span>MX431ADN:</span>
-                <span className="font-bold">{filteredPrinters.filter(p => p.modelo === "MX431ADN").length}</span>
+          {/* Panel 2: Breakdown by Status */}
+          <div className="space-y-2">
+            <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Distribución por Estado</span>
+            <div className="grid grid-cols-2 gap-2">
+              {/* Card 1: Operativos */}
+              <div className="bg-emerald-500/5 border border-emerald-500/20 p-2 rounded-xl flex flex-col justify-between min-h-[64px]">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[11px] font-extrabold text-emerald-800 uppercase tracking-tight">Operativos</span>
+                  <span className="text-base font-black text-emerald-700 leading-none">
+                    {filteredPrinters.filter(p => getPrinterStatus(p) === "Operativo").length}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-1 text-[9px] mt-1.5 pt-1 border-t border-emerald-500/10">
+                  <span className="text-emerald-600 font-semibold">Sin Alertas: <strong className="font-extrabold">{filteredPrinters.filter(p => getPrinterStatus(p) === "Operativo" && !checkPrinterAlerts(p)).length}</strong></span>
+                  <span className="text-amber-600 font-semibold">Con Alertas: <strong className="font-extrabold">{filteredPrinters.filter(p => getPrinterStatus(p) === "Operativo" && checkPrinterAlerts(p)).length}</strong></span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>MX632ADWE:</span>
-                <span className="font-bold">{filteredPrinters.filter(p => p.modelo === "MX632ADWE").length}</span>
+
+              {/* Card 2: En Mantenimiento */}
+              <div className="bg-blue-500/5 border border-blue-500/20 p-2 rounded-xl flex flex-col justify-between min-h-[64px]">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[11px] font-extrabold text-blue-800 uppercase tracking-tight">En Mant.</span>
+                  <span className="text-base font-black text-blue-700 leading-none">
+                    {filteredPrinters.filter(p => getPrinterStatus(p) === "En Mantenimiento").length}
+                  </span>
+                </div>
+                <div className="text-[9px] text-blue-600/70 font-medium mt-1.5 pt-1 border-t border-blue-500/10 italic text-right">
+                  Mantenimiento técnico
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>MX722ADHE:</span>
-                <span className="font-bold">{filteredPrinters.filter(p => p.modelo === "MX722ADHE").length}</span>
-              </div>
+            </div>
+          </div>
+
+          {/* Panel 3: Breakdown by Model */}
+          <div className="space-y-2">
+            <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Distribución por Modelo</span>
+            <div className="flex flex-col gap-1 text-[10px] font-mono">
+              {[
+                { name: "MX431ADN", count: filteredPrinters.filter(p => p.modelo === "MX431ADN").length },
+                { name: "MX632ADWE", count: filteredPrinters.filter(p => p.modelo === "MX632ADWE").length },
+                { name: "MX722ADHE", count: filteredPrinters.filter(p => p.modelo === "MX722ADHE").length }
+              ].map(model => (
+                <div key={model.name} className="flex justify-between items-center bg-surface-container-lowest border border-outline-variant/35 px-2.5 py-1 rounded-lg">
+                  <span className="font-bold text-on-surface-variant">{model.name}</span>
+                  <span className="bg-outline-variant/40 text-on-surface px-1.5 py-0.5 rounded font-black text-[9px] min-w-[16px] text-center">
+                    {model.count}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -169,12 +206,13 @@ export default function InventoryView({
                 const unit   = printer.consumibles?.unidad_imagen_nivel ?? 100;
                 const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
                 const status = getPrinterStatus(printer);
+                const hasAlerts = checkPrinterAlerts(printer);
                 const isInSoporteCard = (printer.area_actual || "").toLowerCase().includes("soporte");
                 const isMurCard = (printer.ubicacion_entidad || "Hospital").toUpperCase() === "MUR";
 
-                const statusColor = status === "Inoperativo"
-                  ? { stripe: "bg-rose-500",    badge: "bg-rose-500/10 text-rose-600 border border-rose-500/25",   icon: "cancel",       pulse: "animate-pulse-subtle" }
-                  : status === "Advertencia"
+                const statusColor = status === "En Mantenimiento"
+                  ? { stripe: "bg-blue-500",    badge: "bg-blue-500/10 text-blue-600 border border-blue-500/25",   icon: "build",       pulse: "animate-pulse-subtle" }
+                  : hasAlerts
                     ? { stripe: "bg-amber-500",  badge: "bg-amber-500/10 text-amber-600 border border-amber-500/25", icon: "warning",      pulse: "" }
                     : { stripe: "bg-emerald-500",badge: "bg-emerald-500/10 text-emerald-600 border border-emerald-500/25", icon: "check_circle", pulse: "" };
 
@@ -215,7 +253,7 @@ export default function InventoryView({
                         {/* Status badge */}
                         <span className={`px-2 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1 shrink-0 ${statusColor.badge} ${statusColor.pulse}`}>
                           <span className="material-symbols-outlined text-[11px]">{statusColor.icon}</span>
-                          {status}
+                          {status} {status === "Operativo" && hasAlerts && <span className="text-[9px] lowercase italic font-normal ml-0.5">(con alertas)</span>}
                         </span>
                       </div>
 
@@ -535,16 +573,18 @@ export default function InventoryView({
                               </span>
                             ) : (
                               <span className={`px-2.5 py-1 rounded-full text-[9px] font-black tracking-wider border uppercase flex items-center gap-1 w-fit ${
-                                getPrinterStatus(printer) === "Inoperativo"
-                                  ? "bg-rose-500/10 text-rose-600 border border-rose-500/25 animate-pulse-subtle"
-                                  : getPrinterStatus(printer) === "Advertencia"
+                                getPrinterStatus(printer) === "En Mantenimiento"
+                                  ? "bg-blue-500/10 text-blue-600 border border-blue-500/25 animate-pulse-subtle"
+                                  : checkPrinterAlerts(printer)
                                     ? "bg-amber-500/10 text-amber-600 border border-amber-500/25"
                                     : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/25"
                               }`}>
                                 <span className="material-symbols-outlined text-[10px]">
-                                  {getPrinterStatus(printer) === "Inoperativo" ? "cancel" : getPrinterStatus(printer) === "Advertencia" ? "warning" : "check_circle"}
+                                  {getPrinterStatus(printer) === "En Mantenimiento" ? "build" : checkPrinterAlerts(printer) ? "warning" : "check_circle"}
                                 </span>
-                                {getPrinterStatus(printer)}
+                                {getPrinterStatus(printer)} {getPrinterStatus(printer) === "Operativo" && checkPrinterAlerts(printer) && (
+                                  <span className="text-[8px] lowercase italic font-normal ml-0.5">(con alertas)</span>
+                                )}
                               </span>
                             )}
                           </td>

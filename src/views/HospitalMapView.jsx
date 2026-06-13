@@ -37,7 +37,7 @@ const mapAreaToFloorAndRoom = (areaName = "", ubicacionEntidad = "Hospital") => 
   const area = areaName.toLowerCase().trim();
   
   if (ubicacionEntidad.toUpperCase() === "MUR") {
-    return { floor: "MUR / Externo", room: "mur_taller", label: "Taller Externo MUR" };
+    return { floor: "Externo", room: "external", label: "Taller Externo MUR" };
   }
   
   if (area.includes("emergencia") || area.includes("tópico") || area.includes("topico")) {
@@ -81,7 +81,7 @@ const mapAreaToFloorAndRoom = (areaName = "", ubicacionEntidad = "Hospital") => 
   
   // Default fallbacks
   if (area.includes("pendiente") || area.includes("asignacion")) {
-    return { floor: "MUR / Externo", room: "unassigned", label: "Pendientes de Asignación" };
+    return { floor: "Externo", room: "external", label: "Pendientes de Asignación" };
   }
   
   return { floor: "Piso 1", room: "otros", label: "Pasillos & Hall Central" };
@@ -99,7 +99,7 @@ const getDotPosition = (index, total, rx, ry, rw, rh) => {
   return { cx, cy };
 };
 
-export default function HospitalMapView({ printers, getPrinterStatus, handleOpenEditModal }) {
+export default function HospitalMapView({ printers, getPrinterStatus, checkPrinterAlerts, handleOpenEditModal }) {
   const [activeFloor, setActiveFloor] = useState("Piso 1");
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [selectedPrinterSn, setSelectedPrinterSn] = useState(null);
@@ -110,7 +110,8 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
     return {
       ...p,
       mapping,
-      status: getPrinterStatus(p)
+      status: getPrinterStatus(p),
+      hasAlerts: checkPrinterAlerts(p)
     };
   });
 
@@ -123,27 +124,27 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
     const roomPrinters = getPrintersInRoom(floor, roomId);
     if (roomPrinters.length === 0) {
       return {
-        fill: "fill-slate-100 dark:fill-slate-900/10",
-        stroke: "stroke-slate-300 dark:stroke-slate-800",
+        fill: "fill-slate-50 dark:fill-slate-900/10",
+        stroke: "stroke-slate-200 dark:stroke-slate-800",
         text: "text-slate-400 dark:text-slate-600",
         lightGlow: "bg-slate-50 border-slate-200"
       };
     }
 
-    const hasInoperative = roomPrinters.some(p => p.status === "Inoperativo");
+    const hasInoperative = roomPrinters.some(p => p.status === "En Mantenimiento");
     if (hasInoperative) {
       return {
-        fill: "fill-rose-500/10 hover:fill-rose-500/20",
-        stroke: "stroke-rose-500",
-        text: "text-rose-700 dark:text-rose-400 font-bold",
-        lightGlow: "bg-rose-50 border-rose-200"
+        fill: "fill-blue-500/10 hover:fill-blue-500/15",
+        stroke: "stroke-blue-500",
+        text: "text-blue-700 dark:text-blue-400 font-bold",
+        lightGlow: "bg-blue-50 border-blue-200"
       };
     }
 
-    const hasWarning = roomPrinters.some(p => p.status === "Advertencia");
+    const hasWarning = roomPrinters.some(p => p.hasAlerts);
     if (hasWarning) {
       return {
-        fill: "fill-amber-500/10 hover:fill-amber-500/20",
+        fill: "fill-amber-500/10 hover:fill-amber-500/15",
         stroke: "stroke-amber-500",
         text: "text-amber-700 dark:text-amber-400 font-bold",
         lightGlow: "bg-amber-50 border-amber-200"
@@ -152,7 +153,7 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
 
     return {
       fill: "fill-emerald-500/5 hover:fill-emerald-500/10",
-      stroke: "stroke-emerald-500/50",
+      stroke: "stroke-emerald-500/40",
       text: "text-emerald-700 dark:text-emerald-400",
       lightGlow: "bg-emerald-50 border-emerald-100"
     };
@@ -161,45 +162,36 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
   const currentFloorData = FLOORS[activeFloor];
   const printersInActiveFloor = mappedPrinters.filter(p => p.mapping.floor === activeFloor);
 
-  // List of printers for unassigned or MUR
-  const externalPrinters = mappedPrinters.filter(
-    p => p.mapping.floor === "MUR / Externo"
-  );
-
   const selectedRoomDetails = currentFloorData?.rooms.find(r => r.id === selectedRoomId);
-  const printersInSelectedRoom = selectedRoomId
-    ? getPrintersInRoom(activeFloor, selectedRoomId)
-    : [];
 
   const handleRoomClick = (roomId) => {
     setSelectedRoomId(roomId === selectedRoomId ? null : roomId);
     setSelectedPrinterSn(null);
   };
 
-  const getStatusBadgeClass = (status) => {
-    switch (status) {
-      case "Inoperativo":
-        return "bg-rose-500/10 text-rose-600 border border-rose-500/20";
-      case "Advertencia":
-        return "bg-amber-500/10 text-amber-600 border border-amber-500/20";
-      default:
-        return "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20";
+  const getStatusBadgeClass = (status, hasAlerts) => {
+    if (status === "En Mantenimiento") {
+      return "bg-blue-500/10 text-blue-600 border border-blue-500/20";
     }
+    if (hasAlerts) {
+      return "bg-amber-500/10 text-amber-600 border border-amber-500/20";
+    }
+    return "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20";
   };
 
   return (
     <section className="bg-surface border border-outline-variant rounded-2xl p-5 shadow-sm space-y-4">
       {/* Styles for pulsing animations in SVG map */}
       <style dangerouslySetInnerHTML={{ __html: `
-        .pulse-circle-rose {
-          animation: svgPulseRose 1.6s infinite ease-out;
+        .pulse-circle-blue {
+          animation: svgPulseBlue 1.6s infinite ease-out;
           transform-origin: center;
         }
         .pulse-circle-amber {
           animation: svgPulseAmber 1.6s infinite ease-out;
           transform-origin: center;
         }
-        @keyframes svgPulseRose {
+        @keyframes svgPulseBlue {
           0% { r: 5px; opacity: 0.9; }
           100% { r: 15px; opacity: 0; }
         }
@@ -240,244 +232,191 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
               {floor}
             </button>
           ))}
-          <button
-            onClick={() => {
-              setActiveFloor("MUR / Externo");
-              setSelectedRoomId(null);
-              setSelectedPrinterSn(null);
-            }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              activeFloor === "MUR / Externo"
-                ? "bg-surface text-secondary shadow-sm"
-                : "text-on-surface-variant hover:text-on-surface"
-            }`}
-          >
-            MUR / Externo
-          </button>
         </div>
       </div>
 
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left pane: The Map */}
-        <div className="lg:col-span-8 space-y-3">
-          {activeFloor !== "MUR / Externo" ? (
-            <div className="relative border border-outline-variant/60 rounded-xl bg-slate-950/5 p-4 flex flex-col items-center justify-center overflow-hidden">
-              <h3 className="text-xs font-extrabold text-outline uppercase tracking-wider mb-2 self-start">
-                {currentFloorData.title}
+        <div className="lg:col-span-8 space-y-4">
+          <div className="relative border border-outline-variant/60 rounded-2xl bg-surface-container-low p-5 flex flex-col items-center justify-center overflow-hidden shadow-sm">
+            <div className="w-full flex items-center justify-between mb-3">
+              <h3 className="text-xs font-extrabold text-primary uppercase tracking-widest flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">floor</span>
+                {currentFloorData?.title}
               </h3>
-              
-              <svg
-                viewBox="0 0 800 380"
-                className="w-full h-auto max-h-[350px] font-sans antialiased text-on-surface transition-all"
-              >
-                {/* Background Grid for blueprint aesthetic */}
-                <defs>
-                  <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-outline-variant/20" />
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid)" rx="8" />
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase tracking-wide">
+                {printersInActiveFloor.length} {printersInActiveFloor.length === 1 ? "Dispositivo" : "Dispositivos"}
+              </span>
+            </div>
+            
+            <svg
+              viewBox="0 0 800 380"
+              className="w-full h-auto max-h-[350px] font-sans antialiased text-on-surface transition-all select-none"
+            >
+              {/* Background Grid for blueprint aesthetic */}
+              <defs>
+                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-outline-variant/15" />
+                </pattern>
+                <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+                  <feDropShadow dx="0" dy="4" stdDeviation="6" flood-opacity="0.1" />
+                </filter>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid)" rx="12" className="text-surface-container-lowest" />
 
-                {/* Corridor */}
-                <rect
-                  x={currentFloorData.corridor.x}
-                  y={currentFloorData.corridor.y}
-                  width={currentFloorData.corridor.w}
-                  height={currentFloorData.corridor.h}
-                  fill="currentColor"
-                  className="text-slate-100/60 dark:text-slate-900/10 stroke-slate-300 dark:stroke-slate-800"
-                  strokeWidth="1.5"
-                  strokeDasharray="4"
-                  rx="6"
-                />
-                <text
-                  x={currentFloorData.corridor.x + currentFloorData.corridor.w / 2}
-                  y={currentFloorData.corridor.y + 24}
-                  textAnchor="middle"
-                  className="text-[11px] fill-slate-400 font-bold uppercase tracking-widest pointer-events-none"
-                >
-                  {currentFloorData.corridor.label}
-                </text>
+              {/* Corridor */}
+              {currentFloorData?.corridor && (
+                <g>
+                  <rect
+                    x={currentFloorData.corridor.x}
+                    y={currentFloorData.corridor.y}
+                    width={currentFloorData.corridor.w}
+                    height={currentFloorData.corridor.h}
+                    fill="currentColor"
+                    className="text-surface-container-high/40 stroke-outline-variant/40"
+                    strokeWidth="1.5"
+                    strokeDasharray="4"
+                    rx="8"
+                  />
+                  <text
+                    x={currentFloorData.corridor.x + currentFloorData.corridor.w / 2}
+                    y={currentFloorData.corridor.y + 24}
+                    textAnchor="middle"
+                    className="text-[10px] fill-on-surface-variant/60 font-bold uppercase tracking-widest pointer-events-none"
+                  >
+                    {currentFloorData.corridor.label}
+                  </text>
+                </g>
+              )}
 
-                {/* Rooms */}
-                {currentFloorData.rooms.map((room) => {
-                  const style = getRoomStatusStyle(activeFloor, room.id);
-                  const isSelected = selectedRoomId === room.id;
-                  const roomPrinters = getPrintersInRoom(activeFloor, room.id);
+              {/* Rooms */}
+              {currentFloorData?.rooms.map((room) => {
+                const style = getRoomStatusStyle(activeFloor, room.id);
+                const isSelected = selectedRoomId === room.id;
+                const roomPrinters = getPrintersInRoom(activeFloor, room.id);
 
-                  return (
-                    <g key={room.id} className="cursor-pointer" onClick={() => handleRoomClick(room.id)}>
-                      {/* Room Area Rectangle */}
-                      <rect
-                        x={room.x}
-                        y={room.y}
-                        width={room.w}
-                        height={room.h}
-                        className={`${style.fill} ${style.stroke} transition-all`}
-                        strokeWidth={isSelected ? 3 : 1.5}
-                        rx="8"
-                      />
+                return (
+                  <g key={room.id} className="group cursor-pointer" onClick={() => handleRoomClick(room.id)}>
+                    {/* Room Area Rectangle */}
+                    <rect
+                      x={room.x}
+                      y={room.y}
+                      width={room.w}
+                      height={room.h}
+                      className={`${style.fill} ${style.stroke} transition-all duration-300`}
+                      strokeWidth={isSelected ? 3 : 1.5}
+                      rx="12"
+                      filter={isSelected ? "url(#shadow)" : undefined}
+                    />
 
-                      {/* Room Name */}
-                      <text
-                        x={room.x + 12}
-                        y={room.y + 24}
-                        className={`text-xs ${style.text} pointer-events-none select-none`}
-                        fontWeight="700"
-                      >
-                        {room.label}
-                      </text>
+                    {/* Room Name */}
+                    <text
+                      x={room.x + 14}
+                      y={room.y + 26}
+                      className={`text-xs ${style.text} pointer-events-none select-none`}
+                      fontWeight="800"
+                    >
+                      {room.label}
+                    </text>
 
-                      {/* Room printer count badge */}
-                      {roomPrinters.length > 0 && (
-                        <g transform={`translate(${room.x + room.w - 28}, ${room.y + 12})`}>
-                          <rect
-                            width="16"
-                            height="16"
-                            rx="4"
-                            className="fill-slate-800 dark:fill-slate-200"
-                          />
-                          <text
-                            x="8"
-                            y="12"
-                            textAnchor="middle"
-                            className="text-[10px] font-extrabold fill-white dark:fill-slate-950 pointer-events-none"
-                          >
-                            {roomPrinters.length}
-                          </text>
-                        </g>
-                      )}
+                    {/* Room printer count badge */}
+                    {roomPrinters.length > 0 && (
+                      <g transform={`translate(${room.x + room.w - 32}, ${room.y + 14})`}>
+                        <rect
+                          width="18"
+                          height="18"
+                          rx="6"
+                          className="fill-primary text-on-primary shadow-sm"
+                        />
+                        <text
+                          x="9"
+                          y="13"
+                          textAnchor="middle"
+                          className="text-[9px] font-black fill-on-primary pointer-events-none"
+                        >
+                          {roomPrinters.length}
+                        </text>
+                      </g>
+                    )}
 
-                      {/* Printer Nodes (Dots) inside the Room */}
-                      {roomPrinters.map((printer, index) => {
-                        const { cx, cy } = getDotPosition(index, roomPrinters.length, room.x, room.y, room.w, room.h);
-                        const isPrinterSelected = selectedPrinterSn === printer.id_serie;
+                    {/* Printer Nodes (Dots) inside the Room */}
+                    {roomPrinters.map((printer, index) => {
+                      const { cx, cy } = getDotPosition(index, roomPrinters.length, room.x, room.y, room.w, room.h);
+                      const isPrinterSelected = selectedPrinterSn === printer.id_serie;
 
-                        let dotColor = "fill-emerald-500 stroke-white dark:stroke-slate-950";
-                        let pulseClass = null;
+                      let dotColor = "fill-emerald-500 stroke-white dark:stroke-slate-950";
+                      let pulseClass = null;
 
-                        if (printer.status === "Inoperativo") {
-                          dotColor = "fill-rose-500 stroke-white dark:stroke-slate-950";
-                          pulseClass = "pulse-circle-rose fill-rose-500";
-                        } else if (printer.status === "Advertencia") {
-                          dotColor = "fill-amber-500 stroke-white dark:stroke-slate-950";
-                          pulseClass = "pulse-circle-amber fill-amber-500";
-                        }
+                      if (printer.status === "En Mantenimiento") {
+                        dotColor = "fill-blue-500 stroke-white dark:stroke-slate-950";
+                        pulseClass = "pulse-circle-blue fill-blue-500";
+                      } else if (printer.hasAlerts) {
+                        dotColor = "fill-amber-500 stroke-white dark:stroke-slate-950";
+                        pulseClass = "pulse-circle-amber fill-amber-500";
+                      }
 
-                        return (
-                          <g
-                            key={printer.id_serie}
-                            onClick={(e) => {
-                              e.stopPropagation(); // Avoid room double toggle
-                              setSelectedRoomId(room.id);
-                              setSelectedPrinterSn(printer.id_serie);
-                            }}
-                          >
-                            {/* Pulse background circle if warning/inoperative */}
-                            {pulseClass && (
-                              <circle
-                                cx={cx}
-                                cy={cy + 15}
-                                r="5"
-                                className={pulseClass}
-                              />
-                            )}
-                            {/* Main Dot */}
+                      return (
+                        <g
+                          key={printer.id_serie}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Avoid room double toggle
+                            setSelectedRoomId(room.id);
+                            setSelectedPrinterSn(printer.id_serie);
+                          }}
+                        >
+                          {/* Pulse background circle if warning/inoperative */}
+                          {pulseClass && (
                             <circle
                               cx={cx}
                               cy={cy + 15}
-                              r={isPrinterSelected ? 8 : 6}
-                              className={`${dotColor} transition-all stroke-2 hover:scale-125`}
+                              r="5"
+                              className={pulseClass}
                             />
-                            {/* Model text indicator */}
-                            <text
-                              x={cx}
-                              y={cy + 32}
-                              textAnchor="middle"
-                              className="text-[9px] fill-slate-500 font-mono font-bold select-none pointer-events-none"
-                            >
-                              {printer.id_serie.slice(-4)}
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-          ) : (
-            /* External / MUR view list */
-            <div className="border border-outline-variant/60 rounded-xl bg-slate-950/5 p-4 min-h-[300px] flex flex-col justify-start space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-on-surface">Ubicaciones Externas / Fuera de Red</h3>
-                <p className="text-xs text-on-surface-variant">Equipos que se encuentran en el taller externo de MUR o pendientes de instalación.</p>
-              </div>
-
-              {externalPrinters.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-outline-variant p-8">
-                  <span className="material-symbols-outlined text-4xl">folder_off</span>
-                  <p className="text-xs font-semibold mt-2">No hay impresoras en taller externo o sin asignar</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {externalPrinters.map((printer) => {
-                    const statusClass = getStatusBadgeClass(printer.status);
-                    return (
-                      <div
-                        key={printer.id_serie}
-                        onClick={() => {
-                          setSelectedPrinterSn(printer.id_serie);
-                        }}
-                        className={`p-3 border rounded-xl bg-surface hover:bg-surface-container-low transition-all cursor-pointer flex justify-between items-center ${
-                          selectedPrinterSn === printer.id_serie
-                            ? "border-secondary ring-1 ring-secondary"
-                            : "border-outline-variant/50"
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <span className="font-mono text-xs font-black text-on-surface block">
-                            {printer.id_serie}
-                          </span>
-                          <span className="text-[10px] text-outline bg-surface-container-high px-1.5 py-0.5 rounded">
-                            {printer.modelo}
-                          </span>
-                        </div>
-                        <div className="flex flex-col items-end gap-1.5">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${statusClass}`}>
-                            {printer.status}
-                          </span>
-                          <span className="text-[9px] text-outline font-semibold">
-                            {printer.area_actual}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                          )}
+                          {/* Main Dot */}
+                          <circle
+                            cx={cx}
+                            cy={cy + 15}
+                            r={isPrinterSelected ? 9 : 7}
+                            className={`${dotColor} transition-all duration-300 stroke-2 hover:scale-125 cursor-pointer`}
+                          />
+                          {/* Model text indicator */}
+                          <text
+                            x={cx}
+                            y={cy + 34}
+                            textAnchor="middle"
+                            className="text-[9px] fill-on-surface-variant font-mono font-bold select-none pointer-events-none"
+                          >
+                            {printer.id_serie.slice(-4)}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
 
           {/* Legend */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 text-xs">
-            <span className="text-outline font-bold uppercase tracking-wider text-[10px]">Leyenda:</span>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-emerald-500 border border-white dark:border-slate-900"></span>
-              <span className="text-on-surface-variant font-medium">Operativo</span>
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 p-3 bg-surface-container-low/60 rounded-xl border border-outline-variant/50 text-[11px] backdrop-blur-sm shadow-sm">
+            <span className="text-outline font-extrabold uppercase tracking-widest text-[9px] mr-2">Leyenda:</span>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-slate-900 shadow-sm"></span>
+              <span className="text-on-surface font-semibold">Operativo</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-amber-500 border border-white dark:border-slate-900 animate-pulse-subtle"></span>
-              <span className="text-on-surface-variant font-medium">Advertencia</span>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 border border-white dark:border-slate-900 shadow-sm animate-pulse-subtle"></span>
+              <span className="text-on-surface font-semibold">Con Alertas</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-rose-500 border border-white dark:border-slate-900 animate-pulse-subtle"></span>
-              <span className="text-on-surface-variant font-medium">Inoperativo</span>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 border border-white dark:border-slate-900 shadow-sm animate-pulse-subtle"></span>
+              <span className="text-on-surface font-semibold">En Mantenimiento</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-lg bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></span>
-              <span className="text-on-surface-variant font-medium">Habitación Vacía</span>
+            <div className="flex items-center gap-2">
+              <span className="w-3.5 h-2.5 rounded-md bg-surface-container-high border border-outline-variant shadow-sm"></span>
+              <span className="text-on-surface font-semibold">Área sin Impresora</span>
             </div>
           </div>
         </div>
@@ -492,7 +431,7 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
               const toner = printer.consumibles?.toner_nivel ?? 100;
               const unit = printer.consumibles?.unidad_imagen_nivel ?? 100;
               const maint = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
-              const statusClass = getStatusBadgeClass(printer.status);
+              const statusClass = getStatusBadgeClass(printer.status, printer.hasAlerts);
 
               return (
                 <div className="space-y-4 h-full flex flex-col justify-between">
@@ -506,7 +445,7 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
                         </h4>
                       </div>
                       <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${statusClass}`}>
-                        {printer.status}
+                        {printer.status} {printer.status === "Operativo" && printer.hasAlerts && <span className="text-[8px] lowercase italic font-normal ml-0.5">(con alertas)</span>}
                       </span>
                     </div>
 
@@ -554,10 +493,10 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
                         <div key={c.label} className="space-y-1 text-xs">
                           <div className="flex justify-between items-center">
                             <span className="text-on-surface-variant font-medium">{c.label}</span>
-                            <span className={`font-bold ${c.value <= 15 ? "text-rose-600" : "text-on-surface"}`}>{c.value}%</span>
+                            <span className={`font-bold ${c.value <= 15 ? "text-rose-600 animate-pulse" : "text-on-surface"}`}>{c.value}%</span>
                           </div>
-                          <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${c.color}`} style={{ width: `${c.value}%` }} />
+                          <div className="h-2.5 w-full bg-surface-container-high rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full transition-all duration-500 ${c.color}`} style={{ width: `${c.value}%` }} />
                           </div>
                         </div>
                       ))}
@@ -565,9 +504,9 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
 
                     {/* Observations */}
                     {printer.observaciones && (
-                      <div className="p-2 bg-slate-50 dark:bg-slate-900/40 rounded-lg border border-dashed border-outline-variant/40">
+                      <div className="p-2.5 bg-surface-container-low rounded-xl border border-dashed border-outline-variant/50">
                         <p className="text-[10px] uppercase font-bold text-outline mb-0.5">Observaciones:</p>
-                        <p className="text-[11px] text-on-surface-variant italic leading-snug">"{printer.observaciones}"</p>
+                        <p className="text-[11px] text-on-surface-variant italic leading-relaxed">"{printer.observaciones}"</p>
                       </div>
                     )}
                   </div>
@@ -575,7 +514,7 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
                   {/* Actions */}
                   <button
                     onClick={() => handleOpenEditModal(printer)}
-                    className="w-full mt-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 rounded-xl text-xs font-bold hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                    className="w-full mt-6 py-3 bg-primary text-on-primary rounded-xl text-xs font-bold hover:bg-primary/95 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 shadow-md"
                   >
                     <span className="material-symbols-outlined text-sm">edit</span>
                     Editar / Registrar Lectura
@@ -590,8 +529,8 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
                   <div className="space-y-3.5 flex-1">
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase font-bold text-outline tracking-wider">Detalles de Área</span>
-                      <h4 className="font-extrabold text-base text-on-surface flex items-center gap-1">
-                        <span className="material-symbols-outlined text-primary text-lg">meeting_room</span>
+                      <h4 className="font-extrabold text-base text-on-surface flex items-center gap-1.5 leading-none">
+                        <span className="material-symbols-outlined text-primary">meeting_room</span>
                         {selectedRoomDetails?.label}
                       </h4>
                     </div>
@@ -599,31 +538,31 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
                     <div className="h-px bg-outline-variant/30" />
 
                     {roomPrinters.length === 0 ? (
-                      <div className="flex-1 flex flex-col items-center justify-center text-outline-variant py-10">
-                        <span className="material-symbols-outlined text-3xl">print_disabled</span>
-                        <p className="text-xs font-semibold mt-1">No hay impresoras asignadas aquí</p>
+                      <div className="flex-1 flex flex-col items-center justify-center text-outline-variant/60 py-12">
+                        <span className="material-symbols-outlined text-4xl">print_disabled</span>
+                        <p className="text-xs font-bold mt-2 text-outline">Sin impresoras asignadas</p>
                       </div>
                     ) : (
-                      <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                         <p className="text-[10px] uppercase font-bold text-outline tracking-wider">Equipos en esta Área ({roomPrinters.length})</p>
                         {roomPrinters.map((printer) => {
-                          const statusClass = getStatusBadgeClass(printer.status);
+                          const statusClass = getStatusBadgeClass(printer.status, printer.hasAlerts);
                           return (
                             <div
                               key={printer.id_serie}
                               onClick={() => setSelectedPrinterSn(printer.id_serie)}
-                              className="p-2.5 border border-outline-variant/40 rounded-xl bg-surface hover:bg-surface-container-low transition-all cursor-pointer flex items-center justify-between"
+                              className="p-3 border border-outline-variant/40 rounded-xl bg-surface hover:bg-surface-container-low transition-all cursor-pointer flex items-center justify-between shadow-sm active:scale-[0.98]"
                             >
                               <div className="space-y-0.5">
                                 <span className="font-mono text-xs font-black text-on-surface block">
                                   {printer.id_serie}
                                 </span>
-                                <span className="text-[10px] text-outline-variant font-bold">
+                                <span className="text-[10px] text-outline bg-surface-container-high px-1.5 py-0.5 rounded font-bold">
                                   {printer.modelo}
                                 </span>
                               </div>
                               <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${statusClass}`}>
-                                {printer.status}
+                                {printer.status} {printer.status === "Operativo" && printer.hasAlerts && <span className="text-[8px] lowercase italic font-normal ml-0.5">(con alertas)</span>}
                               </span>
                             </div>
                           );
@@ -634,7 +573,7 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
                   
                   <button
                     onClick={() => setSelectedRoomId(null)}
-                    className="w-full mt-4 py-2 border border-outline-variant rounded-xl text-xs font-bold text-on-surface hover:bg-surface-container-low active:scale-[0.98] transition-all"
+                    className="w-full mt-4 py-2.5 border border-outline-variant rounded-xl text-xs font-bold text-on-surface-variant hover:bg-surface-container-low active:scale-[0.98] transition-all"
                   >
                     Volver a Vista General
                   </button>
@@ -642,11 +581,13 @@ export default function HospitalMapView({ printers, getPrinterStatus, handleOpen
               );
             })() : (
               // 3. Nothing Chosen Default
-              <div className="flex-1 flex flex-col items-center justify-center text-center text-outline-variant p-6 my-auto">
-                <span className="material-symbols-outlined text-4xl animate-bounce-subtle text-outline-variant/60">touch_app</span>
-                <h4 className="text-xs font-extrabold text-on-surface-variant mt-3 uppercase tracking-wider">Geolocalización</h4>
-                <p className="text-[11px] text-outline mt-1.5 max-w-[200px] leading-relaxed">
-                  Haz clic en un área del mapa o en un nodo de impresora para examinar su ficha técnica en tiempo real.
+              <div className="flex-1 flex flex-col items-center justify-center text-center text-outline-variant/80 p-6 my-auto">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-3">
+                  <span className="material-symbols-outlined text-2xl animate-bounce-subtle">touch_app</span>
+                </div>
+                <h4 className="text-xs font-extrabold text-on-surface mt-1 uppercase tracking-widest">Geolocalización</h4>
+                <p className="text-[11px] text-on-surface-variant mt-2 max-w-[200px] leading-relaxed">
+                  Haz clic en un área del mapa o selecciona un nodo de impresora para examinar su ficha técnica en tiempo real.
                 </p>
               </div>
             )}

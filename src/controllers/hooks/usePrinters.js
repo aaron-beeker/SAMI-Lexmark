@@ -11,6 +11,67 @@ import {
 } from "../../models/PrinterModel";
 import { calcularFechasPredictivas } from "../../services/PredictionService";
 
+export function checkPrinterAlerts(p) {
+  if (!p) return false;
+  
+  if (p.estado_funcionamiento_manual === true && p.estado_funcionamiento === "Advertencia") {
+    return true;
+  }
+  
+  if (p.estado_funcionamiento_manual === true && (p.estado_funcionamiento === "Inoperativo" || p.estado_funcionamiento === "En Mantenimiento")) {
+    return false;
+  }
+  
+  const area = p.area_actual || "";
+  const toner = p.consumibles?.toner_nivel ?? 100;
+  const unit = p.consumibles?.unidad_imagen_nivel ?? 100;
+  const maintenance = p.consumibles?.mantenimiento_kit_nivel ?? 100;
+  const observaciones = p.observaciones || "";
+  const ubicacion = p.ubicacion_entidad || "Hospital";
+
+  const cleanArea = area.toLowerCase().trim();
+  const cleanObs = observaciones.toLowerCase().trim();
+  const cleanUbicacion = ubicacion.toLowerCase().trim();
+  
+  const isNonServiceArea = cleanArea.includes("soporte") || 
+                           cleanArea.includes("mur") || 
+                           cleanUbicacion.includes("mur");
+  
+  const tonerVal = Number(toner);
+  const unitVal = Number(unit);
+  const maintVal = Number(maintenance);
+
+  const levelIsZero = tonerVal === 0 || unitVal === 0 || maintVal === 0;
+
+  const hasSeriousObs = cleanObs.includes("inoperativa") || 
+                         cleanObs.includes("inoperativo") || 
+                         cleanObs.includes("malograda") || 
+                         cleanObs.includes("malogrado") || 
+                         cleanObs.includes("dañada") || 
+                         cleanObs.includes("dañado") || 
+                         cleanObs.includes("baja") || 
+                         cleanObs.includes("mal estado") || 
+                         cleanObs.includes("inoperable") ||
+                         cleanObs.includes("falta") ||
+                         cleanObs.includes("error");
+
+  const hasWarningObs = cleanObs.includes("traba") ||
+                        cleanObs.includes("atasco") ||
+                        cleanObs.includes("mantenimiento") ||
+                        cleanObs.includes("limpieza") ||
+                        cleanObs.includes("detalles");
+
+  const levelIsLow = tonerVal <= 15 || unitVal <= 15 || maintVal <= 15;
+
+  const isInoperative = isNonServiceArea && (hasSeriousObs || levelIsZero);
+  
+  if (isInoperative) {
+    return false;
+  }
+  
+  return levelIsLow || hasWarningObs || hasSeriousObs || levelIsZero;
+}
+
 export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
   const [printers, setPrinters] = useState([]);
   const [loadingPrinters, setLoadingPrinters] = useState(true);
@@ -105,36 +166,28 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
                            cleanObs.includes("error");
 
     if (isNonServiceArea && (hasSeriousObs || levelIsZero)) {
-      return "Inoperativo";
-    }
-
-    const hasWarningObs = cleanObs.includes("traba") ||
-                          cleanObs.includes("atasco") ||
-                          cleanObs.includes("mantenimiento") ||
-                          cleanObs.includes("limpieza") ||
-                          cleanObs.includes("detalles");
-
-    const levelIsLow = tonerVal <= 15 || unitVal <= 15 || maintVal <= 15;
-
-    if (levelIsLow || hasWarningObs || hasSeriousObs || levelIsZero) {
-      return "Advertencia";
+      return "En Mantenimiento";
     }
 
     return "Operativo";
   };
 
   const getPrinterStatus = (p) => {
-    if (p.estado_funcionamiento_manual === true) {
-      return p.estado_funcionamiento || "Operativo";
-    }
     const toner = p.consumibles?.toner_nivel ?? 100;
     const unit = p.consumibles?.unidad_imagen_nivel ?? 100;
     const maint = p.consumibles?.mantenimiento_kit_nivel ?? 100;
-    return calculatePrinterStatus(p.area_actual, toner, unit, maint, p.observaciones, p.ubicacion_entidad);
+    const status = calculatePrinterStatus(p.area_actual, toner, unit, maint, p.observaciones, p.ubicacion_entidad);
+    if (status === "Advertencia") {
+      return "Operativo";
+    }
+    if (status === "Inoperativo") {
+      return "En Mantenimiento";
+    }
+    return status;
   };
 
   const isPrinterInoperative = (p) => {
-    return getPrinterStatus(p) === "Inoperativo";
+    return getPrinterStatus(p) === "En Mantenimiento";
   };
 
   // Reactively calculate functioning status when form inputs change if auto-calculate is enabled
@@ -228,16 +281,14 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
 
     setSavingEdit(true);
     try {
-      const computedFuncionamiento = editFuncionamientoAuto
-        ? calculatePrinterStatus(
-            editArea,
-            Number(editToner),
-            Number(editUnit),
-            Number(editMantenimiento),
-            editObservaciones,
-            editUbicacion
-          )
-        : editFuncionamiento;
+      const computedFuncionamiento = calculatePrinterStatus(
+        editArea,
+        Number(editToner),
+        Number(editUnit),
+        Number(editMantenimiento),
+        editObservaciones,
+        editUbicacion
+      );
       const prediction = calcularFechasPredictivas(Number(editToner), Number(editUnit), Number(editMantenimiento));
 
       if (isCreateMode) {
@@ -255,7 +306,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
           detalle_caso: editDetalleCaso || "",
           ip: editIp,
           estado_funcionamiento: computedFuncionamiento,
-          estado_funcionamiento_manual: !editFuncionamientoAuto,
+          estado_funcionamiento_manual: false,
           observaciones: editObservaciones || "",
           ubicacion_entidad: editUbicacion,
           consumibles: {
@@ -274,7 +325,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
           unidad_imagen_nivel: Number(editUnit),
           mantenimiento_kit_nivel: Number(editMantenimiento),
           estado_funcionamiento: computedFuncionamiento,
-          estado_funcionamiento_manual: !editFuncionamientoAuto,
+          estado_funcionamiento_manual: false,
           observaciones: printerDoc.observaciones,
           codigo_caso_cas: editCasCode,
           detalle_caso: editDetalleCaso || "",
@@ -356,7 +407,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             unidad_imagen_nivel: Number(editUnit),
             mantenimiento_kit_nivel: Number(editMantenimiento),
             estado_funcionamiento: computedFuncionamiento,
-            estado_funcionamiento_manual: !editFuncionamientoAuto,
+            estado_funcionamiento_manual: false,
             observaciones: editObservaciones,
             codigo_caso_cas: editCasCode,
             detalle_caso: editDetalleCaso || "",
@@ -666,7 +717,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       "inoperativo",
       "inoperativa",
       "inoperativos",
-      "inoperativas",
+      "inoperativa",
       "inoperante",
       "inoperantes",
       "falla",
@@ -676,12 +727,19 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       "malogrado",
       "malograda",
       "dañada",
-      "dañado"
+      "dañado",
+      "mantenimiento",
+      "en mantenimiento"
     ];
 
+    if (["sin alertas", "sin alerta"].includes(nt)) {
+      return ns === "operativo" && !checkPrinterAlerts(p);
+    }
+    if (advertenciaKw.includes(nt) || ["con alertas", "con alerta"].includes(nt)) {
+      return ns === "operativo" && checkPrinterAlerts(p);
+    }
     if (operativoKw.includes(nt)) return ns === "operativo";
-    if (advertenciaKw.includes(nt)) return ns === "advertencia";
-    if (inoperativoKw.includes(nt)) return ns === "inoperativo";
+    if (inoperativoKw.includes(nt)) return ns === "en mantenimiento";
     return false;
   };
 
@@ -729,7 +787,11 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       "averia",
       "averias",
       "malogrado",
-      "malograda"
+      "malograda",
+      "sin alertas",
+      "sin alerta",
+      "con alertas",
+      "con alerta"
     ];
     const connKw = [
       "conectado",
@@ -764,7 +826,14 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
 
   const filteredPrinters = printers
     .filter((p) => {
-      if (filterCriticidad !== "all" && getPrinterStatus(p) !== filterCriticidad) return false;
+      const status = getPrinterStatus(p);
+      if (filterCriticidad !== "all") {
+        if (filterCriticidad === "Advertencia") {
+          if (status !== "Operativo" || !checkPrinterAlerts(p)) return false;
+        } else if (status !== filterCriticidad) {
+          return false;
+        }
+      }
 
       const raw = searchText.trim();
       if (!raw) return true;
@@ -814,7 +883,11 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
         "averia",
         "averias",
         "malogrado",
-        "malograda"
+        "malograda",
+        "sin alertas",
+        "sin alerta",
+        "con alertas",
+        "con alerta"
       ];
       const CONN_KW = [
         "conectado",
@@ -853,8 +926,8 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     .sort((a, b) => {
       const statusA = getPrinterStatus(a);
       const statusB = getPrinterStatus(b);
-      if (statusA === "Inoperativo" && statusB !== "Inoperativo") return 1;
-      if (statusA !== "Inoperativo" && statusB === "Inoperativo") return -1;
+      if (statusA === "En Mantenimiento" && statusB !== "En Mantenimiento") return 1;
+      if (statusA !== "En Mantenimiento" && statusB === "En Mantenimiento") return -1;
       return (
         (a.area_actual || "").localeCompare(b.area_actual || "", "es", { sensitivity: "base" }) ||
         (a.id_serie || "").localeCompare(b.id_serie || "")
@@ -864,8 +937,8 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
   // KPIs
   const kpiTotal = printers.length;
   const kpiOperativas = printers.filter((p) => getPrinterStatus(p) === "Operativo").length;
-  const kpiAdvertencias = printers.filter((p) => getPrinterStatus(p) === "Advertencia").length;
-  const kpiInoperativas = printers.filter((p) => getPrinterStatus(p) === "Inoperativo").length;
+  const kpiAdvertencias = printers.filter((p) => getPrinterStatus(p) === "Operativo" && checkPrinterAlerts(p)).length;
+  const kpiInoperativas = printers.filter((p) => getPrinterStatus(p) === "En Mantenimiento").length;
 
   const isInSoporte = (p) => (p.area_actual || "").toLowerCase().includes("soporte");
   const kpiHospitalTotal = printers.filter((p) => (p.ubicacion_entidad || "Hospital") === "Hospital").length;
@@ -873,7 +946,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     (p) =>
       (p.ubicacion_entidad || "Hospital") === "Hospital" &&
       !isInSoporte(p) &&
-      getPrinterStatus(p) !== "Inoperativo"
+      getPrinterStatus(p) !== "En Mantenimiento"
   ).length;
   const kpiHospitalEnSoporte = printers.filter(
     (p) => (p.ubicacion_entidad || "Hospital") === "Hospital" && isInSoporte(p)
@@ -930,6 +1003,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditFuncionamientoAuto,
     savingEdit,
     isCreateMode,
+    checkPrinterAlerts,
     calculatePrinterStatus,
     getPrinterStatus,
     isPrinterInoperative,

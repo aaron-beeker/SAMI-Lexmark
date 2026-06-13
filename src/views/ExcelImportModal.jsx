@@ -95,14 +95,22 @@ export default function ExcelImportModal({
                           <div>U: {eq.unidad_imagen_nivel}%</div>
                           <div>K: {eq.mantenimiento_kit_nivel ?? 100}%</div>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase shrink-0 ${(eq.estado_funcionamiento || eq.estado_criticidad) === "Inoperativo" || (eq.estado_funcionamiento || eq.estado_criticidad) === "Crítico"
-                          ? "bg-error-container text-error border border-error/20"
-                          : (eq.estado_funcionamiento || eq.estado_criticidad) === "Advertencia"
-                            ? "bg-tertiary-fixed text-tertiary border border-tertiary/20"
-                            : "bg-green-100 text-green-800 border border-green-200"
-                          }`}>
-                          {eq.estado_funcionamiento || eq.estado_criticidad || "Operativo"}
-                        </span>
+                        {(() => {
+                          const status = eq.estado_funcionamiento || eq.estado_criticidad || "Operativo";
+                          const isInop = status === "Inoperativo" || status === "Crítico" || status === "En Mantenimiento";
+                          const isAdv = status === "Advertencia";
+                          return (
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase shrink-0 ${
+                              isInop
+                                ? "bg-blue-50 text-blue-600 border border-blue-200"
+                                : isAdv
+                                  ? "bg-tertiary-fixed text-tertiary border border-tertiary/20"
+                                  : "bg-green-100 text-green-800 border border-green-200"
+                            }`}>
+                              {isInop ? "En Mantenimiento" : isAdv ? "Operativo (con alertas)" : "Operativo"}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}

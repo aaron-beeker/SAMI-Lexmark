@@ -228,18 +228,8 @@ export async function seedPrintersIfEmpty(db) {
 
       let estadoFuncionamiento = "Operativo";
 
-      if (hasSeriousObs || levelIsZero) {
-        estadoFuncionamiento = "Inoperativo";
-      } else {
-        const hasWarningObs = cleanObs.includes("traba") ||
-                              cleanObs.includes("atasco") ||
-                              cleanObs.includes("mantenimiento") ||
-                              cleanObs.includes("limpieza") ||
-                              cleanObs.includes("detalles");
-        const levelIsLow = toner <= 15 || unit <= 15 || maint <= 15;
-        if (levelIsLow || hasWarningObs) {
-          estadoFuncionamiento = "Advertencia";
-        }
+      if (isSoporte && (hasSeriousObs || levelIsZero)) {
+        estadoFuncionamiento = "En Mantenimiento";
       }
 
       const printerDoc = {
