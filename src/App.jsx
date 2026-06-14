@@ -148,6 +148,7 @@ export default function App() {
               setOpenRouterKeyInput={c.setOpenRouterKeyInput}
               showSettingsSaved={c.showSettingsSaved}
               handleSaveApiKey={c.handleSaveApiKey}
+              isAuthenticated={c.isAuthenticated}
             />
           )}
         </main>
