@@ -428,9 +428,9 @@ export default function HospitalMapView({ printers, getPrinterStatus, checkPrint
             {selectedPrinterSn ? (() => {
               const printer = mappedPrinters.find(p => p.id_serie === selectedPrinterSn);
               if (!printer) return null;
-              const toner = printer.consumibles?.toner_nivel ?? 100;
-              const unit = printer.consumibles?.unidad_imagen_nivel ?? 100;
-              const maint = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
+              const toner = printer.consumibles?.toner_nivel ?? null;
+              const unit = printer.consumibles?.unidad_imagen_nivel ?? null;
+              const maint = printer.consumibles?.mantenimiento_kit_nivel ?? null;
               const statusClass = getStatusBadgeClass(printer.status, printer.hasAlerts);
 
               return (
@@ -486,20 +486,26 @@ export default function HospitalMapView({ printers, getPrinterStatus, checkPrint
                     <div className="space-y-2.5">
                       <p className="text-[10px] uppercase font-bold text-outline tracking-wider">Nivel Consumibles</p>
                       {[
-                        { label: "Tóner Negro", value: toner, color: toner <= 15 ? "bg-rose-500" : "bg-primary" },
-                        { label: "Kit de Mantenimiento", value: maint, color: maint <= 15 ? "bg-rose-500" : "bg-tertiary" },
-                        { label: "Unidad de Imagen", value: unit, color: unit <= 15 ? "bg-rose-500" : "bg-secondary" }
-                      ].map((c) => (
-                        <div key={c.label} className="space-y-1 text-xs">
-                          <div className="flex justify-between items-center">
-                            <span className="text-on-surface-variant font-medium">{c.label}</span>
-                            <span className={`font-bold ${c.value <= 15 ? "text-rose-600 animate-pulse" : "text-on-surface"}`}>{c.value}%</span>
+                        { label: "Tóner Negro", value: toner, color: toner === null ? "bg-outline/25" : (toner <= 15 ? "bg-rose-500" : "bg-primary") },
+                        { label: "Kit de Mantenimiento", value: maint, color: maint === null ? "bg-outline/25" : (maint <= 15 ? "bg-rose-500" : "bg-tertiary") },
+                        { label: "Unidad de Imagen", value: unit, color: unit === null ? "bg-outline/25" : (unit <= 15 ? "bg-rose-500" : "bg-secondary") }
+                      ].map((c) => {
+                        const isNull = c.value === null;
+                        const isLow = !isNull && c.value <= 15;
+                        return (
+                          <div key={c.label} className="space-y-1 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-on-surface-variant font-medium">{c.label}</span>
+                              <span className={`font-bold ${isLow ? "text-rose-600 animate-pulse" : "text-on-surface"}`}>
+                                {isNull ? "N/A" : `${c.value}%`}
+                              </span>
+                            </div>
+                            <div className="h-2.5 w-full bg-surface-container-high rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-500 ${c.color}`} style={{ width: isNull ? "0%" : `${c.value}%` }} />
+                            </div>
                           </div>
-                          <div className="h-2.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all duration-500 ${c.color}`} style={{ width: `${c.value}%` }} />
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {/* Observations */}

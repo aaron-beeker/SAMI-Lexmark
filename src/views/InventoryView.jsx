@@ -205,9 +205,9 @@ export default function InventoryView({
             {/* Mobile View (Cards) */}
             <div className="md:hidden space-y-2.5">
               {paginatedPrinters.map((printer) => {
-                const toner  = printer.consumibles?.toner_nivel ?? 100;
-                const unit   = printer.consumibles?.unidad_imagen_nivel ?? 100;
-                const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
+                const toner  = printer.consumibles?.toner_nivel ?? null;
+                const unit   = printer.consumibles?.unidad_imagen_nivel ?? null;
+                const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? null;
                 const status = getPrinterStatus(printer);
                 const hasAlerts = checkPrinterAlerts(printer);
                 const isInSoporteCard = (printer.area_actual || "").toLowerCase().includes("soporte");
@@ -324,21 +324,41 @@ export default function InventoryView({
                       {/* BOTTOM ROW: Consumable bars */}
                       <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/20">
                         {[
-                          { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-error" : "bg-primary"   },
-                          { label: "Kit",    value: maint,  color: maint <= 15  ? "bg-error" : "bg-tertiary"  },
-                          { label: "U.Img",  value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" },
-                        ].map(({ label, value, color }) => (
-                          <div key={label} className="space-y-1">
-                            <div className="flex justify-between items-center">
-                              <span className={`text-[9px] font-bold uppercase tracking-wide ${value <= 15 ? "text-error" : "text-outline"}`}>{label}</span>
-                              <span className={`text-[10px] font-black ${value <= 15 ? "text-error" : "text-on-surface"}`}>{value}%</span>
+                          { label: "Tóner", value: toner,  color: toner === null ? "bg-outline/25" : (toner <= 15  ? "bg-error" : "bg-primary")   },
+                          { label: "Kit",    value: maint,  color: maint === null ? "bg-outline/25" : (maint <= 15  ? "bg-error" : "bg-tertiary")  },
+                          { label: "U.Img",  value: unit,   color: unit === null ? "bg-outline/25" : (unit  <= 15  ? "bg-error" : "bg-secondary") },
+                        ].map(({ label, value, color }) => {
+                          const isNull = value === null;
+                          const isLow = !isNull && value <= 15;
+                          return (
+                            <div key={label} className="space-y-1">
+                              <div className="flex justify-between items-center">
+                                <span className={`text-[9px] font-bold uppercase tracking-wide ${isLow ? "text-error" : "text-outline"}`}>{label}</span>
+                                <span className={`text-[10px] font-black ${isLow ? "text-error" : "text-on-surface"}`}>
+                                  {isNull ? "N/A" : `${value}%`}
+                                </span>
+                              </div>
+                              <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all ${color}`} style={{ width: isNull ? "0%" : `${value}%` }} />
+                              </div>
                             </div>
-                            <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${value}%` }} />
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
+
+                      {/* Statistics */}
+                      {printer.estadisticas && (
+                        <div className="pt-2 border-t border-outline-variant/20 flex justify-between text-[10px] text-outline font-medium">
+                          <span className="flex items-center gap-0.5">
+                            <span className="material-symbols-outlined text-[12px]">description</span>
+                            Hojas: <strong className="text-on-surface ml-0.5">{(printer.estadisticas.hojas_impresas?.total ?? 0).toLocaleString("es-PE")}</strong>
+                          </span>
+                          <span className="flex items-center gap-0.5">
+                            <span className="material-symbols-outlined text-[12px]">auto_stories</span>
+                            Caras: <strong className="text-on-surface ml-0.5">{(printer.estadisticas.caras_impresas?.total ?? 0).toLocaleString("es-PE")}</strong>
+                          </span>
+                        </div>
+                      )}
 
                       {/* Observations */}
                       {printer.observaciones && (
@@ -355,12 +375,13 @@ export default function InventoryView({
             {/* Desktop View (Consolidated Modern Table with Clear Separations) */}
             <div className="hidden md:block bg-surface border border-outline-variant rounded-2xl shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[1100px] text-xs animate-fade-in">
+                <table className="w-full text-left border-collapse min-w-[1300px] text-xs animate-fade-in">
                   <thead className="bg-surface-container-low border-b border-outline-variant">
                     <tr className="text-[10px] font-black text-outline uppercase tracking-widest select-none">
                       <th className="px-6 py-4.5 pl-6 border-r border-outline-variant/60">Dispositivo</th>
                       <th className="px-6 py-4.5 border-r border-outline-variant/60">Ubicación y Conexión</th>
                       <th className="px-6 py-4.5 border-r border-outline-variant/60">Consumibles</th>
+                      <th className="px-6 py-4.5 border-r border-outline-variant/60">Estadísticas</th>
                       <th className="px-6 py-4.5 border-r border-outline-variant/60">Estado</th>
                       <th className="px-6 py-4.5 border-r border-outline-variant/60">Caso CAS</th>
                       <th className="px-6 py-4.5 border-r border-outline-variant/60">Observaciones</th>
@@ -371,14 +392,14 @@ export default function InventoryView({
                     {paginatedPrinters.map((printer) => {
                       const isEditing = editingRowId === printer.id_serie;
                       const toner = isEditing
-                        ? (editingRowData.consumibles?.toner_nivel ?? 100)
-                        : (printer.consumibles?.toner_nivel ?? 100);
+                        ? (editingRowData.consumibles?.toner_nivel ?? null)
+                        : (printer.consumibles?.toner_nivel ?? null);
                       const unit = isEditing
-                        ? (editingRowData.consumibles?.unidad_imagen_nivel ?? 100)
-                        : (printer.consumibles?.unidad_imagen_nivel ?? 100);
+                        ? (editingRowData.consumibles?.unidad_imagen_nivel ?? null)
+                        : (printer.consumibles?.unidad_imagen_nivel ?? null);
                       const maint = isEditing
-                        ? (editingRowData.consumibles?.mantenimiento_kit_nivel ?? 100)
-                        : (printer.consumibles?.mantenimiento_kit_nivel ?? 100);
+                        ? (editingRowData.consumibles?.mantenimiento_kit_nivel ?? null)
+                        : (printer.consumibles?.mantenimiento_kit_nivel ?? null);
 
                       return (
                         <tr
@@ -498,7 +519,7 @@ export default function InventoryView({
                                     type="number"
                                     min="0"
                                     max="100"
-                                    value={toner}
+                                    value={toner ?? ""}
                                     onChange={(e) => handleRowNestedDataChange("consumibles", "toner_nivel", e.target.value)}
                                     onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
                                     className="w-12 bg-surface-container-low border border-outline-variant rounded px-1.5 py-0.5 text-center text-xs text-on-surface font-bold"
@@ -510,7 +531,7 @@ export default function InventoryView({
                                     type="number"
                                     min="0"
                                     max="100"
-                                    value={maint}
+                                    value={maint ?? ""}
                                     onChange={(e) => handleRowNestedDataChange("consumibles", "mantenimiento_kit_nivel", e.target.value)}
                                     onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
                                     className="w-12 bg-surface-container-low border border-outline-variant rounded px-1.5 py-0.5 text-center text-xs text-on-surface font-bold"
@@ -522,7 +543,7 @@ export default function InventoryView({
                                     type="number"
                                     min="0"
                                     max="100"
-                                    value={unit}
+                                    value={unit ?? ""}
                                     onChange={(e) => handleRowNestedDataChange("consumibles", "unidad_imagen_nivel", e.target.value)}
                                     onKeyDown={(e) => handleRowKeyDown(e, printer.id_serie)}
                                     className="w-12 bg-surface-container-low border border-outline-variant rounded px-1.5 py-0.5 text-center text-xs text-on-surface font-bold"
@@ -532,20 +553,56 @@ export default function InventoryView({
                             ) : (
                               <div className="space-y-1.5">
                                 {[
-                                  { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-rose-500" : "bg-primary"   },
-                                  { label: "Kit M.", value: maint,  color: maint <= 15  ? "bg-rose-500" : "bg-tertiary"  },
-                                  { label: "U. Img", value: unit,   color: unit  <= 15  ? "bg-rose-500" : "bg-secondary" }
-                                ].map(({ label, value, color }) => (
-                                  <div key={label} className="flex items-center gap-1.5 text-[9px]">
-                                    <span className="w-8 text-[8px] font-bold text-outline shrink-0 uppercase tracking-wide text-right">{label}</span>
-                                    <div className="h-1.5 flex-grow bg-surface-container-high rounded-full overflow-hidden border border-outline-variant/10">
-                                      <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${value}%` }} />
+                                  { label: "Tóner", value: toner,  color: toner === null ? "bg-outline/25" : (toner <= 15  ? "bg-rose-500" : "bg-primary")   },
+                                  { label: "Kit M.", value: maint,  color: maint === null ? "bg-outline/25" : (maint <= 15  ? "bg-rose-500" : "bg-tertiary")  },
+                                  { label: "U. Img", value: unit,   color: unit === null ? "bg-outline/25" : (unit  <= 15  ? "bg-rose-500" : "bg-secondary") }
+                                ].map(({ label, value, color }) => {
+                                  const isNull = value === null;
+                                  const isLow = !isNull && value <= 15;
+                                  return (
+                                    <div key={label} className="flex items-center gap-1.5 text-[9px]">
+                                      <span className="w-8 text-[8px] font-bold text-outline shrink-0 uppercase tracking-wide text-right">{label}</span>
+                                      <div className="h-1.5 flex-grow bg-surface-container-high rounded-full overflow-hidden border border-outline-variant/10">
+                                        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: isNull ? "0%" : `${value}%` }} />
+                                      </div>
+                                      <span className={`w-7 text-[8px] font-extrabold text-right ${isLow ? 'text-rose-600 animate-pulse' : 'text-on-surface'}`}>
+                                        {isNull ? "N/A" : `${value}%`}
+                                      </span>
                                     </div>
-                                    <span className={`w-7 text-[8px] font-extrabold text-right ${value <= 15 ? 'text-rose-600 animate-pulse' : 'text-on-surface'}`}>{value}%</span>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
+                          </td>
+
+                          {/* ESTADÍSTICAS */}
+                          <td className="px-6 py-5.5 align-middle border-r border-outline-variant/30">
+                            {(() => {
+                              const hasStats = printer.estadisticas;
+                              const hojasTotal = printer.estadisticas?.hojas_impresas?.total ?? 0;
+                              const hojasImp = printer.estadisticas?.hojas_impresas?.imprimir ?? 0;
+                              const hojasCop = printer.estadisticas?.hojas_impresas?.copiar ?? 0;
+                              const carasTotal = printer.estadisticas?.caras_impresas?.total ?? 0;
+                              const carasImp = printer.estadisticas?.caras_impresas?.imprimir ?? 0;
+                              const carasCop = printer.estadisticas?.caras_impresas?.copiar ?? 0;
+
+                              return hasStats ? (
+                                <div className="space-y-1 text-[11px] font-semibold text-on-surface">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-outline text-[14px]">description</span>
+                                    <span>Hojas: <strong>{hojasTotal.toLocaleString("es-PE")}</strong></span>
+                                    <span className="text-[9px] text-outline">({hojasImp.toLocaleString("es-PE")} imp / {hojasCop.toLocaleString("es-PE")} cop)</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-outline text-[14px]">auto_stories</span>
+                                    <span>Caras: <strong>{carasTotal.toLocaleString("es-PE")}</strong></span>
+                                    <span className="text-[9px] text-outline">({carasImp.toLocaleString("es-PE")} imp / {carasCop.toLocaleString("es-PE")} cop)</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-outline-variant italic text-[10px]">-</span>
+                              );
+                            })()}
                           </td>
 
                           {/* ESTADO */}

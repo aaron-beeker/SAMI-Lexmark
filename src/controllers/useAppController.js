@@ -111,6 +111,8 @@ export function useAppController() {
     };
   }, []);
 
+
+
   // Wires up and delegates actions that require cross-hook orchestration
   const handleConfirmStockReduction = () => {
     return stock.handleConfirmStockReduction(

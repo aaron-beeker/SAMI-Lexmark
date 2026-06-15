@@ -255,6 +255,37 @@ export default function PrinterModal({
             />
             </div>
 
+          {/* Page Counters Section (SNMP statistics) */}
+          {!isCreateMode && selectedPrinter && selectedPrinter.estadisticas && (
+            <div className="pt-4 border-t border-outline-variant/30 space-y-2">
+              <h4 className="text-[11px] font-bold text-outline uppercase tracking-wider font-extrabold text-primary">Contadores de Páginas (SNMP)</h4>
+              <div className="grid grid-cols-2 gap-4 bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/20 shadow-sm">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[9px] font-black text-outline uppercase tracking-wider">
+                    <span className="material-symbols-outlined text-[13px] text-primary">description</span>
+                    <span>Hojas Impresas</span>
+                  </div>
+                  <div className="text-xs font-semibold text-on-surface pl-5 space-y-0.5">
+                    <div>Total: <strong className="text-sm font-black text-primary">{(selectedPrinter.estadisticas.hojas_impresas?.total ?? 0).toLocaleString("es-PE")}</strong></div>
+                    <div className="text-[10px] text-outline">Impresión: {(selectedPrinter.estadisticas.hojas_impresas?.imprimir ?? 0).toLocaleString("es-PE")}</div>
+                    <div className="text-[10px] text-outline">Copia: {(selectedPrinter.estadisticas.hojas_impresas?.copiar ?? 0).toLocaleString("es-PE")}</div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[9px] font-black text-outline uppercase tracking-wider">
+                    <span className="material-symbols-outlined text-[13px] text-secondary">auto_stories</span>
+                    <span>Caras Impresas</span>
+                  </div>
+                  <div className="text-xs font-semibold text-on-surface pl-5 space-y-0.5">
+                    <div>Total: <strong className="text-sm font-black text-secondary">{(selectedPrinter.estadisticas.caras_impresas?.total ?? 0).toLocaleString("es-PE")}</strong></div>
+                    <div className="text-[10px] text-outline">Impresión: {(selectedPrinter.estadisticas.caras_impresas?.imprimir ?? 0).toLocaleString("es-PE")}</div>
+                    <div className="text-[10px] text-outline">Copia: {(selectedPrinter.estadisticas.caras_impresas?.copiar ?? 0).toLocaleString("es-PE")}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Individual History Timeline in modal */}
           {selectedPrinterHistory.length > 0 && (
             <div className="pt-4 border-t border-outline-variant/30 space-y-2">
@@ -268,6 +299,11 @@ export default function PrinterModal({
                           <span className="flex items-center gap-0.5 text-[8px] bg-primary-fixed text-primary px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
                             <span className="material-symbols-outlined text-[10px]">smart_toy</span>
                             IA
+                          </span>
+                        ) : String(hist.tipo_actualizacion || "").toLowerCase().includes("automático") || String(hist.tipo_actualizacion || "").toLowerCase().includes("red") ? (
+                          <span className="flex items-center gap-0.5 text-[8px] bg-blue-500/10 text-blue-600 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border border-blue-500/20">
+                            <span className="material-symbols-outlined text-[10px]">settings_ethernet</span>
+                            Red
                           </span>
                         ) : (
                           <span className="flex items-center gap-0.5 text-[8px] bg-outline-variant/30 text-on-surface-variant px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">

@@ -181,9 +181,9 @@ export default function DashboardView({
                   .slice(0, 5)
                   .map((printer) => {
                     const status = getPrinterStatus(printer);
-                    const toner  = printer.consumibles?.toner_nivel ?? 100;
-                    const unit   = printer.consumibles?.unidad_imagen_nivel ?? 100;
-                    const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? 100;
+                    const toner  = printer.consumibles?.toner_nivel ?? null;
+                    const unit   = printer.consumibles?.unidad_imagen_nivel ?? null;
+                    const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? null;
                     const isInSoporteAlert = (printer.area_actual || "").toLowerCase().includes("soporte");
                     const isMurAlert = (printer.ubicacion_entidad || "Hospital").toUpperCase() === "MUR";
 
@@ -254,20 +254,26 @@ export default function DashboardView({
                           {/* BOTTOM ROW: Consumable bars */}
                           <div className="grid grid-cols-3 gap-2 pt-2 border-t border-outline-variant/20">
                             {[
-                              { label: "Tóner", value: toner,  color: toner <= 15  ? "bg-error" : "bg-primary"   },
-                              { label: "Kit",    value: maint,  color: maint <= 15  ? "bg-error" : "bg-tertiary"  },
-                              { label: "U.Img",  value: unit,   color: unit  <= 15  ? "bg-error" : "bg-secondary" },
-                            ].map(({ label, value, color }) => (
-                              <div key={label} className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                  <span className={`text-[9px] font-bold uppercase tracking-wide ${value <= 15 ? "text-error" : "text-outline"}`}>{label}</span>
-                                  <span className={`text-[10px] font-black ${value <= 15 ? "text-error" : "text-on-surface"}`}>{value}%</span>
+                              { label: "Tóner", value: toner,  color: toner === null ? "bg-outline/25" : (toner <= 15  ? "bg-error" : "bg-primary")   },
+                              { label: "Kit",    value: maint,  color: maint === null ? "bg-outline/25" : (maint <= 15  ? "bg-error" : "bg-tertiary")  },
+                              { label: "U.Img",  value: unit,   color: unit === null ? "bg-outline/25" : (unit  <= 15  ? "bg-error" : "bg-secondary") },
+                            ].map(({ label, value, color }) => {
+                              const isNull = value === null;
+                              const isLow = !isNull && value <= 15;
+                              return (
+                                <div key={label} className="space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span className={`text-[9px] font-bold uppercase tracking-wide ${isLow ? "text-error" : "text-outline"}`}>{label}</span>
+                                    <span className={`text-[10px] font-black ${isLow ? "text-error" : "text-on-surface"}`}>
+                                      {isNull ? "N/A" : `${value}%`}
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${color}`} style={{ width: isNull ? "0%" : `${value}%` }} />
+                                  </div>
                                 </div>
-                                <div className="h-1.5 w-full bg-surface-variant rounded-full overflow-hidden">
-                                  <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${value}%` }} />
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
 
                           {/* Observations */}
