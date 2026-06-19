@@ -28,6 +28,7 @@ import { useStock } from "./hooks/useStock";
 import { useChat } from "./hooks/useChat";
 import { useExcelImport } from "./hooks/useExcelImport";
 import { useAuth } from "./hooks/useAuth";
+import { useBilling } from "./hooks/useBilling";
 
 export function useAppController() {
   const navigation = useNavigation();
@@ -51,6 +52,7 @@ export function useAppController() {
   const stock = useStock();
   const chat = useChat();
   const excelImport = useExcelImport();
+  const billing = useBilling({ db });
 
   // Seeding and Firestore Sync
   useEffect(() => {
@@ -227,6 +229,8 @@ export function useAppController() {
     setEditFuncionamiento: printers.setEditFuncionamiento,
     editIp: printers.editIp,
     setEditIp: printers.setEditIp,
+    editEstadisticas: printers.editEstadisticas,
+    setEditEstadisticas: printers.setEditEstadisticas,
     editFuncionamientoAuto: printers.editFuncionamientoAuto,
     setEditFuncionamientoAuto: printers.setEditFuncionamientoAuto,
     savingEdit: printers.savingEdit,
@@ -255,6 +259,7 @@ export function useAppController() {
     kpiHospitalEnServicio: printers.kpiHospitalEnServicio,
     kpiHospitalEnSoporte: printers.kpiHospitalEnSoporte,
     kpiMurTotal: printers.kpiMurTotal,
+    kpiLexmarkTotal: printers.kpiLexmarkTotal,
     currentPage: printers.currentPage,
     setCurrentPage: printers.setCurrentPage,
     totalPages: printers.totalPages,
@@ -321,6 +326,11 @@ export function useAppController() {
     loadingAdmins: auth.loadingAdmins,
     addAdmin: auth.addAdmin,
     removeAdmin: auth.removeAdmin,
-    fetchAdmins: auth.fetchAdmins
+    fetchAdmins: auth.fetchAdmins,
+
+    // Billing
+    billingCycles: billing.billingCycles,
+    loadingBilling: billing.loadingBilling,
+    closeMonth: billing.closeMonth
   };
 }

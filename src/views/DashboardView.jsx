@@ -1,6 +1,7 @@
 import React from "react";
 import StockView from "./StockView";
 import HospitalMapView from "./HospitalMapView";
+import BillingChartView from "./BillingChartView";
 
 export default function DashboardView({
   printers,
@@ -14,6 +15,7 @@ export default function DashboardView({
   kpiHospitalEnServicio,
   kpiHospitalEnSoporte,
   kpiMurTotal,
+  kpiLexmarkTotal,
   getPrinterStatus,
   checkPrinterAlerts,
   setCurrentTab,
@@ -21,8 +23,25 @@ export default function DashboardView({
   handleOpenEditModal,
   handleDecrementStockClick,
   updateManualStock,
-  isAuthenticated
+  isAuthenticated,
+  billingCycles,
+  loadingBilling,
+  closeMonth,
+  setSearchText
 }) {
+  const totalHojas = printers.reduce((acc, p) => acc + (p.estadisticas?.hojas_impresas?.total || 0), 0);
+  const totalCaras = printers.reduce((acc, p) => acc + (p.estadisticas?.caras_impresas?.total || 0), 0);
+
+  const handleCloseMonth = async () => {
+    if (!window.confirm("¿Confirmas que deseas registrar el corte de este mes con los totales actuales?")) return;
+    try {
+      await closeMonth(totalHojas, totalCaras);
+      alert("Corte mensual registrado exitosamente.");
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* KPI Cards Grid */}
@@ -39,23 +58,24 @@ export default function DashboardView({
           </div>
           <p className="text-on-surface-variant font-semibold text-xs flex items-center gap-1.5">
             <span className="material-symbols-outlined text-sm">inventory_2</span>
-            Total Equipos
+            Total de Equipos Contratados
           </p>
-          <span className="text-3xl font-extrabold text-primary">{loadingPrinters ? "..." : kpiTotal}</span>
+          <span className="text-3xl font-extrabold text-primary">41</span>
         </div>
 
         <div
           onClick={() => {
-            setFilterCriticidad("Operativo");
+            setFilterCriticidad("En Servicio");
+            setSearchText("");
             setCurrentTab("inventario");
           }}
           className="p-5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
         >
           <p className="text-emerald-600 font-semibold flex items-center gap-1.5 text-xs">
             <span className="material-symbols-outlined text-sm">check_circle</span>
-            Operativas
+            En Servicio
           </p>
-          <span className="text-3xl font-extrabold text-emerald-700">{loadingPrinters ? "..." : kpiOperativas}</span>
+          <span className="text-3xl font-extrabold text-emerald-700">{loadingPrinters ? "..." : kpiHospitalEnServicio}</span>
         </div>
 
         <div
@@ -63,28 +83,79 @@ export default function DashboardView({
             setFilterCriticidad("Advertencia");
             setCurrentTab("inventario");
           }}
-          className="p-5 bg-amber-500/10 border border-amber-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
+          className="p-5 bg-blue-500/10 border border-blue-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
         >
-          <p className="text-amber-600 font-semibold flex items-center gap-1.5 text-xs">
-            <span className="material-symbols-outlined text-sm">warning</span>
-            Con Alertas
+          <p className="text-blue-600 font-semibold flex items-center gap-1.5 text-xs">
+            <span className="material-symbols-outlined text-sm">content_paste_search</span>
+            Vigilancia Predictiva
           </p>
-          <span className="text-3xl font-extrabold text-amber-700">{loadingPrinters ? "..." : kpiAdvertencias}</span>
+          <span className="text-3xl font-extrabold text-blue-700">{loadingPrinters ? "..." : kpiAdvertencias}</span>
         </div>
 
         <div
           onClick={() => {
-            setFilterCriticidad("En Mantenimiento");
+            setFilterCriticidad("all");
+            setSearchText("Soporte");
             setCurrentTab("inventario");
           }}
           className="p-5 bg-blue-500/10 border border-blue-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
         >
           <p className="text-blue-600 font-semibold flex items-center gap-1.5 text-xs">
             <span className="material-symbols-outlined text-sm">build</span>
-            En Mantenimiento
+            Equipo de Backup En Oficina de Soporte
           </p>
-          <span className="text-3xl font-extrabold text-blue-700">{loadingPrinters ? "..." : kpiInoperativas}</span>
+          <span className="text-3xl font-extrabold text-blue-700">{loadingPrinters ? "..." : printers.filter(p => (p.area_actual || "").toLowerCase().includes("soporte")).length}</span>
         </div>
+      </section>
+
+      {/* Estadísticas Globales de Impresión */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-headline-md text-lg text-on-background font-bold">Estadísticas Globales de Impresión</h2>
+          {isAuthenticated && (
+            <button
+              onClick={handleCloseMonth}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-on-primary font-bold text-xs rounded-xl shadow-md hover:bg-primary-container hover:text-on-primary-container active:scale-95 transition-all"
+            >
+              <span className="material-symbols-outlined text-sm">calendar_month</span>
+              Registrar Cierre (Día 19)
+            </button>
+          )}
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div className="p-5 bg-surface-container-low border border-outline-variant/60 rounded-2xl shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-outline uppercase tracking-widest font-extrabold text-[10px] mb-1 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">description</span>
+                Total Hojas Impresas
+              </p>
+              <span className="text-2xl font-black text-on-surface">
+                {loadingPrinters ? "..." : totalHojas.toLocaleString("es-PE")}
+              </span>
+            </div>
+            <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+              <span className="material-symbols-outlined text-2xl">description</span>
+            </div>
+          </div>
+          <div className="p-5 bg-surface-container-low border border-outline-variant/60 rounded-2xl shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-outline uppercase tracking-widest font-extrabold text-[10px] mb-1 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">auto_stories</span>
+                Total Caras Impresas
+              </p>
+              <span className="text-2xl font-black text-on-surface">
+                {loadingPrinters ? "..." : totalCaras.toLocaleString("es-PE")}
+              </span>
+            </div>
+            <div className="w-12 h-12 rounded-full bg-tertiary/10 text-tertiary flex items-center justify-center">
+              <span className="material-symbols-outlined text-2xl">auto_stories</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Evolución Histórica */}
+        <BillingChartView billingCycles={billingCycles} loadingBilling={loadingBilling} />
       </section>
 
       {/* Módulo de Geolocalización Hospitalaria */}
@@ -107,7 +178,7 @@ export default function DashboardView({
               Ubicación Física y Estado de Servicio
             </h3>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {/* Hospital Card */}
               <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between space-y-2">
                 <div className="flex justify-between items-center">
@@ -145,7 +216,21 @@ export default function DashboardView({
                   <span className="text-lg font-black text-secondary">{loadingPrinters ? "..." : kpiMurTotal}</span>
                 </div>
                 <p className="text-[10px] text-outline pt-2 border-t border-outline-variant/20 leading-tight">
-                  Equipos en taller/soporte externo de MUR.
+                  Equipos en taller externo de MUR.
+                </p>
+              </div>
+
+              {/* Lexmark Card */}
+              <div className="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30 flex flex-col justify-between space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-on-surface flex items-center gap-1">
+                    <span className="material-symbols-outlined text-purple-600 text-sm">precision_manufacturing</span>
+                    Lexmark
+                  </span>
+                  <span className="text-lg font-black text-purple-600">{loadingPrinters ? "..." : kpiLexmarkTotal}</span>
+                </div>
+                <p className="text-[10px] text-outline pt-2 border-t border-outline-variant/20 leading-tight">
+                  Equipos en taller oficial de Lexmark.
                 </p>
               </div>
             </div>

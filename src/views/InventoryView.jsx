@@ -84,7 +84,7 @@ export default function InventoryView({
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hide py-1 shrink-0">
             {[
               { id: "all", label: "Todas" },
-              { id: "Operativo", label: "Operativas" },
+              { id: "En Servicio", label: "En Servicio" },
               { id: "Advertencia", label: "Con Alertas" },
               { id: "En Mantenimiento", label: "En Mantenimiento" }
             ].map(tab => (
@@ -127,8 +127,8 @@ export default function InventoryView({
               <span className="text-xs font-black text-on-surface leading-tight">
                 {filterCriticidad === "all"
                   ? "Todo el Inventario"
-                  : filterCriticidad === "Operativo"
-                    ? "Equipos Operativos"
+                  : filterCriticidad === "En Servicio"
+                    ? "Equipos En Servicio"
                     : filterCriticidad === "Advertencia"
                       ? "Equipos con Alertas"
                       : "Equipos en Mantenimiento"}
@@ -139,31 +139,44 @@ export default function InventoryView({
           {/* Panel 2: Breakdown by Status */}
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Distribución por Estado</span>
-            <div className="grid grid-cols-2 gap-2">
-              {/* Card 1: Operativos */}
+            <div className="grid grid-cols-3 gap-2">
+              {/* Card 1: En Servicio */}
               <div className="bg-emerald-500/5 border border-emerald-500/20 p-2 rounded-xl flex flex-col justify-between min-h-[64px]">
                 <div className="flex justify-between items-baseline">
-                  <span className="text-[11px] font-extrabold text-emerald-800 uppercase tracking-tight">Operativos</span>
+                  <span className="text-[11px] font-extrabold text-emerald-800 uppercase tracking-tight">En Servicio</span>
                   <span className="text-base font-black text-emerald-700 leading-none">
-                    {filteredPrinters.filter(p => getPrinterStatus(p) === "Operativo").length}
+                    {filteredPrinters.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && !(p.area_actual || "").toLowerCase().includes("soporte") && getPrinterStatus(p) !== "En Mantenimiento").length}
                   </span>
                 </div>
                 <div className="flex justify-between gap-1 text-[9px] mt-1.5 pt-1 border-t border-emerald-500/10">
-                  <span className="text-emerald-600 font-semibold">Sin Alertas: <strong className="font-extrabold">{filteredPrinters.filter(p => getPrinterStatus(p) === "Operativo" && !checkPrinterAlerts(p)).length}</strong></span>
-                  <span className="text-amber-600 font-semibold">Con Alertas: <strong className="font-extrabold">{filteredPrinters.filter(p => getPrinterStatus(p) === "Operativo" && checkPrinterAlerts(p)).length}</strong></span>
+                  <span className="text-emerald-600 font-semibold">OK: <strong className="font-extrabold">{filteredPrinters.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && !(p.area_actual || "").toLowerCase().includes("soporte") && getPrinterStatus(p) === "Operativo" && !checkPrinterAlerts(p)).length}</strong></span>
+                  <span className="text-amber-600 font-semibold">Alerta: <strong className="font-extrabold">{filteredPrinters.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && !(p.area_actual || "").toLowerCase().includes("soporte") && getPrinterStatus(p) === "Operativo" && checkPrinterAlerts(p)).length}</strong></span>
                 </div>
               </div>
 
-              {/* Card 2: En Mantenimiento */}
+              {/* Card 2: Backup (Soporte) */}
+              <div className="bg-purple-500/5 border border-purple-500/20 p-2 rounded-xl flex flex-col justify-between min-h-[64px]">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[11px] font-extrabold text-purple-800 uppercase tracking-tight">Backup</span>
+                  <span className="text-base font-black text-purple-700 leading-none">
+                    {filteredPrinters.filter(p => (p.ubicacion_entidad || "Hospital") === "Hospital" && (p.area_actual || "").toLowerCase().includes("soporte")).length}
+                  </span>
+                </div>
+                <div className="text-[9px] text-purple-600/70 font-medium mt-1.5 pt-1 border-t border-purple-500/10 italic text-right">
+                  Oficina Soporte
+                </div>
+              </div>
+
+              {/* Card 3: En Mantenimiento */}
               <div className="bg-blue-500/5 border border-blue-500/20 p-2 rounded-xl flex flex-col justify-between min-h-[64px]">
                 <div className="flex justify-between items-baseline">
                   <span className="text-[11px] font-extrabold text-blue-800 uppercase tracking-tight">En Mant.</span>
                   <span className="text-base font-black text-blue-700 leading-none">
-                    {filteredPrinters.filter(p => getPrinterStatus(p) === "En Mantenimiento").length}
+                    {filteredPrinters.filter(p => getPrinterStatus(p) === "En Mantenimiento" && !((p.ubicacion_entidad || "Hospital") === "Hospital" && (p.area_actual || "").toLowerCase().includes("soporte"))).length}
                   </span>
                 </div>
                 <div className="text-[9px] text-blue-600/70 font-medium mt-1.5 pt-1 border-t border-blue-500/10 italic text-right">
-                  Mantenimiento técnico
+                  Taller/Externo
                 </div>
               </div>
             </div>
@@ -348,15 +361,27 @@ export default function InventoryView({
 
                       {/* Statistics */}
                       {printer.estadisticas && (
-                        <div className="pt-2 border-t border-outline-variant/20 flex justify-between text-[10px] text-outline font-medium">
-                          <span className="flex items-center gap-0.5">
-                            <span className="material-symbols-outlined text-[12px]">description</span>
-                            Hojas: <strong className="text-on-surface ml-0.5">{(printer.estadisticas.hojas_impresas?.total ?? 0).toLocaleString("es-PE")}</strong>
-                          </span>
-                          <span className="flex items-center gap-0.5">
-                            <span className="material-symbols-outlined text-[12px]">auto_stories</span>
-                            Caras: <strong className="text-on-surface ml-0.5">{(printer.estadisticas.caras_impresas?.total ?? 0).toLocaleString("es-PE")}</strong>
-                          </span>
+                        <div className="pt-2 border-t border-outline-variant/20 grid grid-cols-2 gap-2">
+                          <div className="bg-surface-container-low p-1.5 rounded-lg border border-outline-variant/40 flex flex-col">
+                             <div className="flex justify-between items-center text-[9px] text-outline font-bold uppercase mb-0.5">
+                               <span className="flex items-center gap-0.5"><span className="material-symbols-outlined text-[10px]">description</span>Hojas</span>
+                               <span className="text-on-surface font-black text-[10px]">{(printer.estadisticas.hojas_impresas?.total ?? 0).toLocaleString("es-PE")}</span>
+                             </div>
+                             <div className="flex justify-between text-[8px]">
+                               <span className="text-primary font-semibold">Imp: {(printer.estadisticas.hojas_impresas?.imprimir ?? 0).toLocaleString("es-PE")}</span>
+                               <span className="text-tertiary font-semibold">Cop: {(printer.estadisticas.hojas_impresas?.copiar ?? 0).toLocaleString("es-PE")}</span>
+                             </div>
+                          </div>
+                          <div className="bg-surface-container-low p-1.5 rounded-lg border border-outline-variant/40 flex flex-col">
+                             <div className="flex justify-between items-center text-[9px] text-outline font-bold uppercase mb-0.5">
+                               <span className="flex items-center gap-0.5"><span className="material-symbols-outlined text-[10px]">auto_stories</span>Caras</span>
+                               <span className="text-on-surface font-black text-[10px]">{(printer.estadisticas.caras_impresas?.total ?? 0).toLocaleString("es-PE")}</span>
+                             </div>
+                             <div className="flex justify-between text-[8px]">
+                               <span className="text-primary font-semibold">Imp: {(printer.estadisticas.caras_impresas?.imprimir ?? 0).toLocaleString("es-PE")}</span>
+                               <span className="text-tertiary font-semibold">Cop: {(printer.estadisticas.caras_impresas?.copiar ?? 0).toLocaleString("es-PE")}</span>
+                             </div>
+                          </div>
                         </div>
                       )}
 
@@ -587,16 +612,26 @@ export default function InventoryView({
                               const carasCop = printer.estadisticas?.caras_impresas?.copiar ?? 0;
 
                               return hasStats ? (
-                                <div className="space-y-1 text-[11px] font-semibold text-on-surface">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-outline text-[14px]">description</span>
-                                    <span>Hojas: <strong>{hojasTotal.toLocaleString("es-PE")}</strong></span>
-                                    <span className="text-[9px] text-outline">({hojasImp.toLocaleString("es-PE")} imp / {hojasCop.toLocaleString("es-PE")} cop)</span>
+                                <div className="space-y-2 min-w-[140px]">
+                                  <div className="bg-surface-container-low border border-outline-variant/50 rounded-lg p-2 flex flex-col gap-1 shadow-sm">
+                                    <div className="flex items-center justify-between text-[9px] uppercase font-bold text-outline tracking-wider">
+                                      <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[11px]">description</span>Hojas</span>
+                                      <span className="text-on-surface text-[11px] font-black">{hojasTotal.toLocaleString("es-PE")}</span>
+                                    </div>
+                                    <div className="flex gap-1 text-[8.5px] font-bold">
+                                      <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded flex-1 text-center" title="Impresas">Imp: {hojasImp.toLocaleString("es-PE")}</span>
+                                      <span className="bg-tertiary/10 text-tertiary px-1.5 py-0.5 rounded flex-1 text-center" title="Copiadas">Cop: {hojasCop.toLocaleString("es-PE")}</span>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-outline text-[14px]">auto_stories</span>
-                                    <span>Caras: <strong>{carasTotal.toLocaleString("es-PE")}</strong></span>
-                                    <span className="text-[9px] text-outline">({carasImp.toLocaleString("es-PE")} imp / {carasCop.toLocaleString("es-PE")} cop)</span>
+                                  <div className="bg-surface-container-low border border-outline-variant/50 rounded-lg p-2 flex flex-col gap-1 shadow-sm">
+                                    <div className="flex items-center justify-between text-[9px] uppercase font-bold text-outline tracking-wider">
+                                      <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[11px]">auto_stories</span>Caras</span>
+                                      <span className="text-on-surface text-[11px] font-black">{carasTotal.toLocaleString("es-PE")}</span>
+                                    </div>
+                                    <div className="flex gap-1 text-[8.5px] font-bold">
+                                      <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded flex-1 text-center" title="Impresas">Imp: {carasImp.toLocaleString("es-PE")}</span>
+                                      <span className="bg-tertiary/10 text-tertiary px-1.5 py-0.5 rounded flex-1 text-center" title="Copiadas">Cop: {carasCop.toLocaleString("es-PE")}</span>
+                                    </div>
                                   </div>
                                 </div>
                               ) : (

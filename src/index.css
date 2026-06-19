@@ -24,3 +24,18 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(117, 118, 132, 0.5);
 }
+
+/* 
+ * Override global para bordes en punto (Sharp Corners)
+ * A pedido del usuario, se eliminan los bordes redondeados de las tarjetas y el dashboard.
+ * Nota: No se incluye .rounded-full para preservar la forma de los iconos y botones circulares.
+ */
+.rounded-sm,
+.rounded,
+.rounded-md,
+.rounded-lg,
+.rounded-xl,
+.rounded-2xl,
+.rounded-3xl {
+  border-radius: 0 !important;
+}

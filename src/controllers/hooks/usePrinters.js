@@ -123,6 +123,10 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
   const [editUbicacion, setEditUbicacion] = useState("Hospital");
   const [editFuncionamiento, setEditFuncionamiento] = useState("Operativo");
   const [editIp, setEditIp] = useState("");
+  const [editEstadisticas, setEditEstadisticas] = useState({
+    hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
+    caras_impresas: { total: 0, imprimir: 0, copiar: 0 }
+  });
   const [editFuncionamientoAuto, setEditFuncionamientoAuto] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
   const [isCreateMode, setIsCreateMode] = useState(false);
@@ -154,6 +158,10 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     const cleanObs = (observaciones || "").toLowerCase().trim();
     const cleanUbicacion = (ubicacion || "").toLowerCase().trim();
     
+    if (cleanUbicacion.includes("lexmark") || cleanArea.includes("lexmark")) {
+      return "En Mantenimiento";
+    }
+
     const isNonServiceArea = cleanArea.includes("soporte") || 
                              cleanArea.includes("mur") || 
                              cleanUbicacion.includes("mur");
@@ -188,15 +196,41 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     const ubicacion = p.ubicacion_entidad || "Hospital";
     const cleanArea = area.toLowerCase().trim();
     const cleanUbicacion = ubicacion.toLowerCase().trim();
+
+    if (cleanUbicacion.includes("lexmark") || cleanArea.includes("lexmark")) {
+      return "En Mantenimiento";
+    }
+
     const isNonServiceArea = cleanArea.includes("soporte") || 
                              cleanArea.includes("mur") || 
                              cleanUbicacion.includes("mur");
 
-    if (isNonServiceArea) {
+    const cleanObs = (p.observaciones || "").toLowerCase().trim();
+    const hasSeriousObs = cleanObs.includes("inoperativa") || 
+                           cleanObs.includes("inoperativo") || 
+                           cleanObs.includes("malograda") || 
+                           cleanObs.includes("malogrado") || 
+                           cleanObs.includes("dañada") || 
+                           cleanObs.includes("dañado") || 
+                           cleanObs.includes("baja") || 
+                           cleanObs.includes("mal estado") || 
+                           cleanObs.includes("inoperable") ||
+                           cleanObs.includes("falta") ||
+                           cleanObs.includes("error");
+
+    const tonerVal = p.consumibles?.toner_nivel ?? 100;
+    const unitVal = p.consumibles?.unidad_imagen_nivel ?? 100;
+    const maintVal = p.consumibles?.mantenimiento_kit_nivel ?? 100;
+    const levelIsZero = tonerVal === 0 || unitVal === 0 || maintVal === 0;
+
+    if (isNonServiceArea && (hasSeriousObs || levelIsZero)) {
       return "En Mantenimiento";
     }
 
     if (p.estado_funcionamiento) {
+      if (p.estado_funcionamiento === "En Mantenimiento" && !hasSeriousObs && !levelIsZero) {
+        return "Operativo";
+      }
       return p.estado_funcionamiento;
     }
     // Fallback actual si no tiene estado guardado...
@@ -261,6 +295,10 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditDetalleCaso(printer.detalle_caso || "");
     setEditUbicacion(printer.ubicacion_entidad || "Hospital");
     setEditIp(printer.ip || "");
+    setEditEstadisticas(printer.estadisticas || {
+      hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
+      caras_impresas: { total: 0, imprimir: 0, copiar: 0 }
+    });
 
     const storedStatus = printer.estado_funcionamiento || getPrinterStatus(printer);
     const calculated = calculatePrinterStatus(
@@ -291,6 +329,10 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditDetalleCaso("");
     setEditUbicacion("Hospital");
     setEditIp("");
+    setEditEstadisticas({
+      hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
+      caras_impresas: { total: 0, imprimir: 0, copiar: 0 }
+    });
     setEditFuncionamiento("Operativo");
     setEditFuncionamientoAuto(true);
     setSelectedPrinterHistory([]);
@@ -347,7 +389,9 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             mantenimiento_kit_nivel: Number(editMantenimiento),
             ultima_lectura: new Date()
           },
-          prediccion: prediction
+          prediccion: prediction,
+          estadisticas: editEstadisticas,
+          ultima_actualizacion: Timestamp.now()
         };
 
         await createPrinter(db, cleanId, printerDoc);
@@ -395,7 +439,9 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
               mantenimiento_kit_nivel: Number(editMantenimiento),
               ultima_lectura: new Date()
             },
-            prediccion: prediction
+            prediccion: prediction,
+            estadisticas: editEstadisticas,
+            ultima_actualizacion: Timestamp.now()
           };
 
           const newHistoryDoc = {
@@ -429,7 +475,9 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             "consumibles.unidad_imagen_nivel": Number(editUnit),
             "consumibles.mantenimiento_kit_nivel": Number(editMantenimiento),
             "consumibles.ultima_lectura": new Date(),
-            prediccion: prediction
+            prediccion: prediction,
+            estadisticas: editEstadisticas,
+            ultima_actualizacion: Timestamp.now()
           };
 
           await updatePrinter(db, cleanId, updateData);
@@ -862,7 +910,9 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       const status = getPrinterStatus(p);
       const baseStatus = getBaseStatus(status);
       if (filterCriticidad !== "all") {
-        if (filterCriticidad === "Advertencia") {
+        if (filterCriticidad === "En Servicio") {
+          if (baseStatus !== "Operativo" || (p.area_actual || "").toLowerCase().includes("soporte") || (p.ubicacion_entidad || "Hospital") !== "Hospital") return false;
+        } else if (filterCriticidad === "Advertencia") {
           if (baseStatus !== "Operativo" || !checkPrinterAlerts(p)) return false;
         } else if (baseStatus !== filterCriticidad) {
           return false;
@@ -986,6 +1036,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     (p) => (p.ubicacion_entidad || "Hospital") === "Hospital" && isInSoporte(p)
   ).length;
   const kpiMurTotal = printers.filter((p) => p.ubicacion_entidad === "MUR").length;
+  const kpiLexmarkTotal = printers.filter((p) => p.ubicacion_entidad === "Lexmark").length;
 
   const totalPages = Math.ceil(filteredPrinters.length / pageSize) || 1;
   const paginatedPrinters = filteredPrinters.slice(
@@ -1033,6 +1084,8 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditFuncionamiento,
     editIp,
     setEditIp,
+    editEstadisticas,
+    setEditEstadisticas,
     editFuncionamientoAuto,
     setEditFuncionamientoAuto,
     savingEdit,
@@ -1062,6 +1115,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     kpiHospitalEnServicio,
     kpiHospitalEnSoporte,
     kpiMurTotal,
+    kpiLexmarkTotal,
     currentPage,
     setCurrentPage,
     totalPages,

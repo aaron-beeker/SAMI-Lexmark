@@ -16,6 +16,30 @@ import UsersView from "./views/UsersView";
 export default function App() {
   const c = useAppController();
 
+  if (c.isAuthLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background text-on-background">
+        <span className="material-symbols-outlined animate-spin text-4xl text-primary">sync</span>
+      </div>
+    );
+  }
+
+  if (!c.isAuthenticated) {
+    return (
+      <div className="bg-background text-on-background h-screen font-body-md text-body-md overflow-hidden flex items-center justify-center relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5" />
+        <LoginModal
+          isOpen={true}
+          onClose={() => {}}
+          loginWithGoogle={c.loginWithGoogle}
+          loginError={c.loginError}
+          setLoginError={c.setLoginError}
+          hideCloseButton={true}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="bg-background text-on-background h-screen font-body-md text-body-md overflow-hidden flex flex-row">
       {/* Sidebar navigation on Desktop */}
@@ -52,6 +76,7 @@ export default function App() {
               kpiHospitalEnServicio={c.kpiHospitalEnServicio}
               kpiHospitalEnSoporte={c.kpiHospitalEnSoporte}
               kpiMurTotal={c.kpiMurTotal}
+              kpiLexmarkTotal={c.kpiLexmarkTotal}
               getPrinterStatus={c.getPrinterStatus}
               checkPrinterAlerts={c.checkPrinterAlerts}
               setCurrentTab={c.setCurrentTab}
@@ -60,6 +85,10 @@ export default function App() {
               handleDecrementStockClick={c.handleDecrementStockClick}
               updateManualStock={c.updateManualStock}
               isAuthenticated={c.isAuthenticated}
+              billingCycles={c.billingCycles}
+              loadingBilling={c.loadingBilling}
+              closeMonth={c.closeMonth}
+              setSearchText={c.setSearchText}
             />
           )}
 
@@ -218,6 +247,8 @@ export default function App() {
           setEditDetalleCaso={c.setEditDetalleCaso}
           editIp={c.editIp}
           setEditIp={c.setEditIp}
+          editEstadisticas={c.editEstadisticas}
+          setEditEstadisticas={c.setEditEstadisticas}
           editFuncionamiento={c.editFuncionamiento}
           setEditFuncionamiento={c.setEditFuncionamiento}
           editFuncionamientoAuto={c.editFuncionamientoAuto}
@@ -249,14 +280,6 @@ export default function App() {
         setIsExcelImportModalOpen={c.setIsExcelImportModalOpen}
         setExcelData={c.setExcelData}
         setExcelFileName={c.setExcelFileName}
-      />
-
-      <LoginModal
-        isOpen={c.isLoginModalOpen}
-        onClose={() => c.setIsLoginModalOpen(false)}
-        loginWithGoogle={c.loginWithGoogle}
-        loginError={c.loginError}
-        setLoginError={c.setLoginError}
       />
     </div>
 

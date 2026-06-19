@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-export default function LoginModal({ isOpen, onClose, loginWithGoogle, loginError, setLoginError }) {
+export default function LoginModal({ isOpen, onClose, loginWithGoogle, loginError, setLoginError, hideCloseButton }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -15,25 +15,19 @@ export default function LoginModal({ isOpen, onClose, loginWithGoogle, loginErro
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
       <div className="bg-surface/90 backdrop-blur-md rounded-3xl shadow-2xl border border-outline-variant max-w-sm w-full overflow-hidden flex flex-col p-6 animate-scale-in">
         {/* Header */}
-        <div className="flex justify-between items-center mb-5">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-2xl">lock</span>
-            <h3 className="font-extrabold text-base text-on-surface">Panel de Administrador</h3>
-          </div>
-          <button
-            onClick={() => {
-              setLoginError("");
-              onClose();
-            }}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors"
-          >
-            <span className="material-symbols-outlined text-sm">close</span>
-          </button>
+        <div className="flex flex-col items-center mb-6">
+          <img 
+            src="/mur_tecnologa_logo.jpg" 
+            alt="MUR Tecnología" 
+            className="h-16 w-auto object-contain mix-blend-multiply mb-4" 
+          />
+          <h1 className="font-headline-lg-mobile text-2xl font-black text-primary tracking-widest uppercase mb-1">SAMI-Lexmark</h1>
+          <h3 className="font-extrabold text-sm text-on-surface-variant text-center">Acceso Exclusivo</h3>
         </div>
 
         {/* Info text */}
-        <p className="text-xs text-on-surface-variant mb-5 font-medium leading-relaxed">
-          Inicie sesión con su cuenta de Google autorizada para desbloquear las funciones de edición y el Chat de IA.
+        <p className="text-xs text-on-surface-variant text-center mb-6 font-medium leading-relaxed px-4">
+          Inicie sesión con su cuenta de Google autorizada para acceder al panel de administración.
         </p>
 
         {/* Error message */}

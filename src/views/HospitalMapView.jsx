@@ -30,14 +30,25 @@ const FLOORS = {
       { id: "telecom", label: "Telecomunicaciones", x: 410, y: 225, w: 330, h: 115 }
     ],
     corridor: { x: 60, y: 170, w: 680, h: 40, label: "Corredor de Sistemas" }
+  },
+  "Externo": {
+    title: "Talleres Externos (Lexmark / MUR)",
+    rooms: [
+      { id: "lexmark", label: "Taller Lexmark", x: 60, y: 40, w: 320, h: 300 },
+      { id: "mur", label: "Taller MUR", x: 410, y: 40, w: 330, h: 300 }
+    ]
   }
 };
 
 const mapAreaToFloorAndRoom = (areaName = "", ubicacionEntidad = "Hospital") => {
   const area = areaName.toLowerCase().trim();
+  const ubi = ubicacionEntidad.toLowerCase().trim();
   
-  if (ubicacionEntidad.toUpperCase() === "MUR") {
-    return { floor: "Externo", room: "external", label: "Taller Externo MUR" };
+  if (ubi.includes("mur") || area.includes("mur")) {
+    return { floor: "Externo", room: "mur", label: "Taller MUR" };
+  }
+  if (ubi.includes("lexmark") || area.includes("lexmark")) {
+    return { floor: "Externo", room: "lexmark", label: "Taller Lexmark" };
   }
   
   if (area.includes("emergencia") || area.includes("tópico") || area.includes("topico")) {
@@ -62,17 +73,17 @@ const mapAreaToFloorAndRoom = (areaName = "", ubicacionEntidad = "Hospital") => 
   if (area.includes("otorrinolaringología") || area.includes("otorrino")) {
     return { floor: "Piso 2", room: "otorrino", label: "Consultorio Otorrinolaringología" };
   }
-  if (area.includes("archivo")) {
+  if (area.includes("archivo") || area.includes("farmacia")) {
     return { floor: "Piso 2", room: "archivo", label: "Archivo Central" };
   }
   
-  if (area.includes("soporte")) {
+  if (area.includes("soporte") || area.includes("taller")) {
     return { floor: "Piso 3", room: "soporte", label: "Soporte Técnico (Taller)" };
   }
   if (area.includes("oei") || area.includes("jefatura")) {
     return { floor: "Piso 3", room: "oei", label: "Oficina OEI & Jefatura" };
   }
-  if (area.includes("informática") || area.includes("informatica")) {
+  if (area.includes("informática") || area.includes("informatica") || area.includes("sistemas")) {
     return { floor: "Piso 3", room: "informatica", label: "Oficina Informática" };
   }
   if (area.includes("telecomunicaciones") || area.includes("telecom")) {
@@ -81,7 +92,7 @@ const mapAreaToFloorAndRoom = (areaName = "", ubicacionEntidad = "Hospital") => 
   
   // Default fallbacks
   if (area.includes("pendiente") || area.includes("asignacion")) {
-    return { floor: "Externo", room: "external", label: "Pendientes de Asignación" };
+    return { floor: "Externo", room: "mur", label: "Pendientes de Asignación" };
   }
   
   return { floor: "Piso 1", room: "otros", label: "Pasillos & Hall Central" };
@@ -408,11 +419,11 @@ export default function HospitalMapView({ printers, getPrinterStatus, checkPrint
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500 border border-white dark:border-slate-900 shadow-sm animate-pulse-subtle"></span>
-              <span className="text-on-surface font-semibold">Con Alertas</span>
+              <span className="text-on-surface font-semibold">Vigilancia Predictiva</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-500 border border-white dark:border-slate-900 shadow-sm animate-pulse-subtle"></span>
-              <span className="text-on-surface font-semibold">En Mantenimiento</span>
+              <span className="text-on-surface font-semibold">En Mantenimiento / Backup</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-3.5 h-2.5 rounded-md bg-surface-container-high border border-outline-variant shadow-sm"></span>
@@ -445,7 +456,7 @@ export default function HospitalMapView({ printers, getPrinterStatus, checkPrint
                         </h4>
                       </div>
                       <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${statusClass}`}>
-                        {printer.status} {printer.status === "Operativo" && printer.hasAlerts && <span className="text-[8px] lowercase italic font-normal ml-0.5">(con alertas)</span>}
+                        {printer.status} {printer.status === "Operativo" && printer.hasAlerts && <span className="text-[8px] lowercase italic font-normal ml-0.5">(vigilancia predictiva)</span>}
                       </span>
                     </div>
 
@@ -568,7 +579,7 @@ export default function HospitalMapView({ printers, getPrinterStatus, checkPrint
                                 </span>
                               </div>
                               <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${statusClass}`}>
-                                {printer.status} {printer.status === "Operativo" && printer.hasAlerts && <span className="text-[8px] lowercase italic font-normal ml-0.5">(con alertas)</span>}
+                                {printer.status} {printer.status === "Operativo" && printer.hasAlerts && <span className="text-[8px] lowercase italic font-normal ml-0.5">(vigilancia predictiva)</span>}
                               </span>
                             </div>
                           );

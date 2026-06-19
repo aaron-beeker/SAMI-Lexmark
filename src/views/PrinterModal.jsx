@@ -27,6 +27,8 @@ export default function PrinterModal({
   setEditDetalleCaso,
   editIp,
   setEditIp,
+  editEstadisticas,
+  setEditEstadisticas,
   editFuncionamiento,
   setEditFuncionamiento,
   editFuncionamientoAuto,
@@ -133,24 +135,29 @@ export default function PrinterModal({
               <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Área de Ubicación</label>
               <input
                 type="text"
-                value={editArea}
+                value={editUbicacion === "MUR" || editUbicacion === "Lexmark" ? "-" : editArea}
                 onChange={(e) => setEditArea(e.target.value)}
-                className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
-                placeholder="Ej. Soporte, C.E Otorrino..."
-                required
-                disabled={!isAuthenticated}
+                className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm disabled:opacity-50"
+                placeholder={editUbicacion === "MUR" || editUbicacion === "Lexmark" ? "No aplica para externos" : "Ej. Soporte, C.E Otorrino..."}
+                required={editUbicacion === "Hospital"}
+                disabled={!isAuthenticated || editUbicacion === "MUR" || editUbicacion === "Lexmark"}
               />
             </div>
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Ubicación Física</label>
               <select
                 value={editUbicacion}
-                onChange={(e) => setEditUbicacion(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditUbicacion(val);
+                  if (val === "MUR" || val === "Lexmark") setEditArea("-");
+                }}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
                 disabled={!isAuthenticated}
               >
                 <option value="Hospital">Hospital</option>
                 <option value="MUR">MUR</option>
+                <option value="Lexmark">Lexmark</option>
               </select>
             </div>
           </div>
@@ -256,35 +263,51 @@ export default function PrinterModal({
             </div>
 
           {/* Page Counters Section (SNMP statistics) */}
-          {!isCreateMode && selectedPrinter && selectedPrinter.estadisticas && (
-            <div className="pt-4 border-t border-outline-variant/30 space-y-2">
-              <h4 className="text-[11px] font-bold text-outline uppercase tracking-wider font-extrabold text-primary">Contadores de Páginas (SNMP)</h4>
-              <div className="grid grid-cols-2 gap-4 bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/20 shadow-sm">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[9px] font-black text-outline uppercase tracking-wider">
-                    <span className="material-symbols-outlined text-[13px] text-primary">description</span>
-                    <span>Hojas Impresas</span>
+          <div className="pt-4 border-t border-outline-variant/30 space-y-2">
+            <h4 className="text-[11px] font-bold text-outline uppercase tracking-wider font-extrabold text-primary">Contadores de Páginas (SNMP)</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/20 shadow-sm">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-[9px] font-black text-outline uppercase tracking-wider mb-2">
+                  <span className="material-symbols-outlined text-[13px] text-primary">description</span>
+                  <span>Hojas Impresas</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-on-surface">Total:</label>
+                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, total: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-primary text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated} />
                   </div>
-                  <div className="text-xs font-semibold text-on-surface pl-5 space-y-0.5">
-                    <div>Total: <strong className="text-sm font-black text-primary">{(selectedPrinter.estadisticas.hojas_impresas?.total ?? 0).toLocaleString("es-PE")}</strong></div>
-                    <div className="text-[10px] text-outline">Impresión: {(selectedPrinter.estadisticas.hojas_impresas?.imprimir ?? 0).toLocaleString("es-PE")}</div>
-                    <div className="text-[10px] text-outline">Copia: {(selectedPrinter.estadisticas.hojas_impresas?.copiar ?? 0).toLocaleString("es-PE")}</div>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-outline">Impresión:</label>
+                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.imprimir ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, imprimir: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated} />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-outline">Copia:</label>
+                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.copiar ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, copiar: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated} />
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[9px] font-black text-outline uppercase tracking-wider">
-                    <span className="material-symbols-outlined text-[13px] text-secondary">auto_stories</span>
-                    <span>Caras Impresas</span>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-[9px] font-black text-outline uppercase tracking-wider mb-2">
+                  <span className="material-symbols-outlined text-[13px] text-secondary">auto_stories</span>
+                  <span>Caras Impresas</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-on-surface">Total:</label>
+                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, total: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-secondary text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated} />
                   </div>
-                  <div className="text-xs font-semibold text-on-surface pl-5 space-y-0.5">
-                    <div>Total: <strong className="text-sm font-black text-secondary">{(selectedPrinter.estadisticas.caras_impresas?.total ?? 0).toLocaleString("es-PE")}</strong></div>
-                    <div className="text-[10px] text-outline">Impresión: {(selectedPrinter.estadisticas.caras_impresas?.imprimir ?? 0).toLocaleString("es-PE")}</div>
-                    <div className="text-[10px] text-outline">Copia: {(selectedPrinter.estadisticas.caras_impresas?.copiar ?? 0).toLocaleString("es-PE")}</div>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-outline">Impresión:</label>
+                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.imprimir ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, imprimir: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated} />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-outline">Copia:</label>
+                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.copiar ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, copiar: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated} />
                   </div>
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Individual History Timeline in modal */}
           {selectedPrinterHistory.length > 0 && (
