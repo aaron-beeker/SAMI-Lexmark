@@ -39,9 +39,14 @@ Se ha avanzado significativamente en la consolidación de la seguridad y la usab
 * **OCR Local**: Si las APIs fallan o el técnico no cuenta con internet, el flujo alternativo con Tesseract.js extrae datos directamente en el navegador del cliente.
 * **Modal de Confirmación**: En [ChatView.jsx](file:///c:/Users/beker/Desktop/SAMI-Lexmark/src/views/ChatView.jsx), la IA presenta un borrador editable de la ficha extraída de las fotos o archivos Excel. El usuario puede corregir datos en caliente antes de autorizar el almacenamiento persistente en Firestore.
 
-### F. Optimización de Rendimiento y Modo Offline
-* **Persistencia Local**: Habilitada IndexedDB en Firestore dentro de [firebase.js](file:///c:/Users/beker/Desktop/SAMI-Lexmark/src/firebase.js) para permitir lecturas y escrituras offline confiables en sótanos o zonas sin cobertura.
-* **Paginación en Inventario**: El listado en [usePrinters.js](file:///c:/Users/beker/Desktop/SAMI-Lexmark/src/controllers/hooks/usePrinters.js) se limitó a 15 elementos por página, optimizando el rendimiento de la UI al cargar inventarios voluminosos.
+### F. Optimizacion de Rendimiento y Modo Offline
+* **Persistencia Local**: Habilitada IndexedDB en Firestore dentro de [firebase.js](file:///c:/Users/beker/Desktop/SAMI-Lexmark/src/firebase.js) para permitir lecturas y escrituras offline confiables en sotanos o zonas sin cobertura.
+* **Paginacion en Inventario**: El listado en [usePrinters.js](file:///c:/Users/beker/Desktop/SAMI-Lexmark/src/controllers/hooks/usePrinters.js) se limito a 15 elementos por pagina, optimizando el rendimiento de la UI al cargar inventarios voluminosos.
+
+### G. Modulo de Facturacion y Cierres Mensuales (Nuevo Hito)
+* **Implementacion Arquitectonica**: Se ha integrado exitosamente el flujo de facturacion manteniendo la limpieza del patron MVC. El modelo ([BillingModel.js](file:///c:/Users/beker/Desktop/SAMI-Lexmark/src/models/BillingModel.js)) gestiona la suscripcion a la coleccion `facturacion_mensual`, mientras que el controlador ([useBilling.js](file:///c:/Users/beker/Desktop/SAMI-Lexmark/src/controllers/hooks/useBilling.js)) encapsula la logica de negocio (validacion de cierres existentes y armado de periodos dinamicos).
+* **Impacto Visual**: La incorporacion de la vista [BillingChartView.jsx](file:///c:/Users/beker/Desktop/SAMI-Lexmark/src/views/BillingChartView.jsx) utilizando **Recharts** anade gran valor analitico al Dashboard. La presentacion grafica de "Total Hojas" vs "Total Caras" aporta un seguimiento visual clave para el negocio, consolidando la plataforma como una herramienta gerencial y no solo operativa.
+* **Buenas Practicas**: La decision de aislar este modulo previene la sobrecarga de `useAppController.js`, favoreciendo la mantenibilidad.
 
 ---
 
@@ -54,20 +59,9 @@ A pesar de los grandes avances, se sugieren las siguientes mejoras a futuro:
 * **Riesgo**: Aunque el sistema protege estas claves frente a usuarios no administradores en la UI, ataques de tipo *Cross-Site Scripting (XSS)* o extensiones maliciosas en el navegador podrían llegar a leerlas del almacenamiento local.
 * **Solución**: Diseñar una función Serverless en Vercel o Firebase Cloud Functions que actúe como proxy. El cliente envía la solicitud al backend proxy y este realiza la llamada a Gemini o OpenRouter usando claves guardadas de forma segura en variables de entorno del servidor.
 
-### 2. Endurecimiento de Reglas de Seguridad en Firestore (Riesgo Medio)
-* **Problema**: La aplicación lee y escribe directamente en Firestore utilizando el SDK web.
-* **Recomendación**: Asegurarse de que en la consola de Firebase, las reglas de Firestore (`firestore.rules`) obliguen a que los documentos solo puedan ser creados, actualizados o eliminados por usuarios con autenticación verificada, impidiendo escrituras anónimas directas:
-  ```javascript
-  rules_version = '2';
-  service cloud.firestore {
-    match /databases/{database}/documents {
-      match /artifacts/sami-lexmark/{document=**} {
-        allow read: if true; // Lectura pública
-        allow write: if request.auth != null; // Escritura restringida a administradores logueados
-      }
-    }
-  }
-  ```
+### 2. Endurecimiento de Reglas de Seguridad en Firestore (Pospuesto Intencionalmente)
+* **Decisión Arquitectónica**: Se generó el archivo `firestore.rules`, pero se decidió mantener explícitamente la regla `allow write: if true;` debido a que existe un script externo en otra PC que inyecta/actualiza datos directamente sobre Firestore sin autenticación en la aplicación web.
+* **Recomendación Alternativa a Futuro**: Para asegurar la base de datos sin romper el script, se recomienda usar [Firebase Admin SDK](https://firebase.google.com/docs/admin/setup) (que usa cuentas de servicio ignorando las reglas) en la PC externa. Una vez implementado, se podrán cerrar las reglas de la aplicación web (`allow write: if request.auth != null;`).
 
 ### 3. Notificaciones Automatizadas de Alertas
 * **Recomendación**: Conectar Firebase Cloud Functions con un proveedor de mensajería (ej. Twilio o SendGrid). Cuando el controlador detecte que la autonomía calculada de un consumible en un área crítica (UCI, Emergencias) es menor a 5 días o su nivel de tóner baja del 15%, se debe enviar automáticamente una alerta de stock al supervisor del proyecto.

@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /artifacts/sami-lexmark/{document=**} {
+      allow read: if true; // Lectura pública para poder ver el dashboard
+      allow write: if true; // ABIERTO: Permite escrituras de scripts externos sin autenticación
+    }
+  }
+}

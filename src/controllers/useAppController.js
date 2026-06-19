@@ -181,10 +181,6 @@ export function useAppController() {
     setFilterCriticidad: navigation.setFilterCriticidad,
 
     // Settings
-    apiKeyInput: settings.apiKeyInput,
-    setApiKeyInput: settings.setApiKeyInput,
-    openRouterKeyInput: settings.openRouterKeyInput,
-    setOpenRouterKeyInput: settings.setOpenRouterKeyInput,
     showSettingsSaved: settings.showSettingsSaved,
     handleSaveApiKey: settings.handleSaveApiKey,
 

@@ -15,6 +15,7 @@ Sistema Avanzado de Monitoreo de Inventario para las impresoras Lexmark arrendad
 | OCR Local | Tesseract.js para extraccion de texto desde imagenes sin conexion (Tier 3) |
 | Parser Offline | Motor de analisis de texto local con regex avanzado para operacion sin internet (Tier 4) |
 | Hojas de Calculo | SheetJS (XLSX) para importacion, analisis y exportacion de reportes Excel |
+| Graficos y Metricas | Recharts para visualizacion interactiva de evolucion historica y facturacion |
 | Despliegue | Vercel |
 
 ---
@@ -32,7 +33,8 @@ src/
 |-- models/                      # CAPA MODELO (DIP: Inyeccion de db)
 |   |-- PrinterModel.js          # Transacciones y flujos CRUD de impresoras
 |   |-- StockModel.js            # Gestion de repuestos en deposito/hospital
-|   +-- HistoryModel.js          # Bitacora general de auditoria
+|   |-- HistoryModel.js          # Bitacora general de auditoria
+|   +-- BillingModel.js          # Registro de cortes y facturacion mensual
 |
 |-- controllers/                 # CAPA CONTROLADOR (Fachada/Facade)
 |   |-- useAppController.js      # Orquestador y fachada de estados
@@ -43,7 +45,8 @@ src/
 |       |-- usePrinters.js       # CRUD, edicion en linea, paginacion y KPIs
 |       |-- useStock.js          # Sustraccion y decrementos de stock
 |       |-- useChat.js           # Conversacion, adjuntos y modal de revision IA
-|       +-- useExcelImport.js    # Parseo y validacion de Excel
+|       |-- useExcelImport.js    # Parseo y validacion de Excel
+|       +-- useBilling.js        # Logica de cierres mensuales y lectura historica
 |
 |-- views/                       # CAPA VISTA (ISP: Props segregadas)
 |   |-- TopAppBar.jsx            # Barra de herramientas superior
@@ -57,6 +60,7 @@ src/
 |   |-- PrinterModal.jsx         # Detalle de impresora y sub-historial
 |   |-- StockView.jsx            # Vista de inventario de repuestos
 |   |-- StockModal.jsx           # Seleccion para descuento y reposicion de repuestos
+|   |-- BillingChartView.jsx     # Graficos de evolucion y cortes mensuales
 |   +-- ExcelImportModal.jsx     # Previsualizacion antes de confirmar datos
 |
 +-- services/                    # SERVICIOS (OCP/LSP: Patron Estrategia)
@@ -133,6 +137,11 @@ src/
 - Bitacora general de todas las operaciones realizadas sobre impresoras y stock.
 - Historial individual por impresora con registro de cada lectura, actualizacion y reemplazo de consumibles.
 - Identificacion del proveedor de procesamiento utilizado en cada operacion (Gemini, OpenRouter, OCR Local, Parser Offline).
+
+### 11. Modulo de Facturacion y Cierres Mensuales
+- Registro historico de cortes de facturacion recurrentes (Ej. cierres los dias 19 de cada mes).
+- Almacenamiento consolidado de metrica "Total Hojas" y "Total Caras" extraidas del inventario por periodo.
+- Graficos interactivos de evolucion historica utilizando Recharts, integrados directamente en el Dashboard.
 
 ---
 

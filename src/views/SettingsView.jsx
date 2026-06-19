@@ -1,10 +1,6 @@
 import React from "react";
 
 export default function SettingsView({
-  apiKeyInput,
-  setApiKeyInput,
-  openRouterKeyInput,
-  setOpenRouterKeyInput,
   showSettingsSaved,
   handleSaveApiKey,
   isAuthenticated
@@ -24,39 +20,15 @@ export default function SettingsView({
             SAMI usa una cadena de proveedores: primero intenta <strong>Gemini</strong>, luego <strong>OpenRouter</strong> (modelos gratis), y como último recurso <strong>OCR local</strong> (sin API). Configura al menos una clave.
           </p>
 
-          {/* Gemini Key */}
-          <div className="space-y-1.5 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30">
-            <label className="text-[11px] font-bold text-outline uppercase tracking-wider flex items-center gap-1">
-              <span className="material-symbols-outlined text-[13px] text-primary">diamond</span>
-              Gemini API Key (Google)
-            </label>
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder="AQ.Ab8RN6..."
-              className="w-full bg-surface border-outline-variant rounded-lg p-2.5 focus:ring-primary focus:border-primary text-sm font-mono"
-            />
-            <p className="text-[10px] text-outline">Obtén una en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" className="text-primary underline">Google AI Studio</a></p>
+          <div className="p-4 bg-green-50 text-green-800 rounded-xl border border-green-200 shadow-inner flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-green-600">verified_user</span>
+              <strong className="text-sm">Gestión Segura en el Servidor</strong>
+            </div>
+            <p className="text-xs opacity-90">
+              Las claves API de Gemini y OpenRouter ya no se almacenan en el navegador por motivos de seguridad (riesgo XSS mitigado). Ahora se gestionan de forma segura a través de un proxy Serverless en Vercel.
+            </p>
           </div>
-
-          {/* OpenRouter Key */}
-          <div className="space-y-1.5 p-3 bg-surface-container-low rounded-xl border border-outline-variant/30">
-            <label className="text-[11px] font-bold text-outline uppercase tracking-wider flex items-center gap-1">
-              <span className="material-symbols-outlined text-[13px] text-secondary">route</span>
-              OpenRouter API Key (Alternativa gratuita)
-            </label>
-            <input
-              type="password"
-              value={openRouterKeyInput}
-              onChange={(e) => setOpenRouterKeyInput(e.target.value)}
-              placeholder="sk-or-v1-..."
-              className="w-full bg-surface border-outline-variant rounded-lg p-2.5 focus:ring-primary focus:border-primary text-sm font-mono"
-            />
-            <p className="text-[10px] text-outline">Gratis con modelos como Gemma y Llama. Regístrate en <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" className="text-primary underline">openrouter.ai/keys</a></p>
-          </div>
-
-          {/* OCR info */}
           <div className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 flex items-start gap-2">
             <span className="material-symbols-outlined text-tertiary text-base mt-0.5">document_scanner</span>
             <div>
@@ -71,13 +43,6 @@ export default function SettingsView({
               Configuración guardada exitosamente en este navegador.
             </div>
           )}
-
-          <button
-            type="submit"
-            className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl shadow-md hover:bg-primary-container active:scale-95 transition-all text-sm"
-          >
-            Guardar Configuración
-          </button>
         </form>
       ) : (
         <div className="p-6 bg-surface-container-lowest border border-outline-variant rounded-2xl shadow-sm space-y-3 flex flex-col items-center text-center">

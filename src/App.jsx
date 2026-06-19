@@ -171,10 +171,6 @@ export default function App() {
 
           {c.currentTab === "settings" && (
             <SettingsView
-              apiKeyInput={c.apiKeyInput}
-              setApiKeyInput={c.setApiKeyInput}
-              openRouterKeyInput={c.openRouterKeyInput}
-              setOpenRouterKeyInput={c.setOpenRouterKeyInput}
               showSettingsSaved={c.showSettingsSaved}
               handleSaveApiKey={c.handleSaveApiKey}
               isAuthenticated={c.isAuthenticated}

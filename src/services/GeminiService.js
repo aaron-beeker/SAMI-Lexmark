@@ -1,24 +1,6 @@
 // src/services/GeminiService.js
 // Multi-provider AI service: Gemini → OpenRouter → OCR (Tesseract.js)
 
-// ─── API Key Helpers ───
-
-function getGeminiKey() {
-  const envKey = (typeof import.meta.env !== "undefined" && import.meta.env) ? import.meta.env.VITE_GEMINI_API_KEY : "";
-  if (envKey && envKey !== "TU_API_KEY_DE_GEMINI_AQUI" && envKey.trim() !== "") {
-    return envKey;
-  }
-  return localStorage.getItem("sami_gemini_api_key") || "";
-}
-
-function getOpenRouterKey() {
-  const envKey = (typeof import.meta.env !== "undefined" && import.meta.env) ? import.meta.env.VITE_OPENROUTER_API_KEY : "";
-  if (envKey && envKey.trim() !== "") {
-    return envKey;
-  }
-  return localStorage.getItem("sami_openrouter_api_key") || "";
-}
-
 // ─── Shared Prompt ───
 
 function buildSystemPrompt() {
@@ -200,19 +182,16 @@ function buildSystemPrompt() {
 // ─── Provider 1: Google Gemini API ───
 
 async function callGeminiAPI(parts) {
-  const key = getGeminiKey();
-  if (!key) return null; // Skip if no key
-
   const models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"];
 
   for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const url = `/api/gemini`;
     try {
       console.log(`[Gemini] Intentando modelo: ${model}`);
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({ contents: [{ parts }] })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, parts })
       });
 
       if (!response.ok) {
@@ -246,9 +225,6 @@ async function callGeminiAPI(parts) {
 // ─── Provider 2: OpenRouter API (Free models with vision) ───
 
 async function callOpenRouterAPI(systemPrompt, userText, adjuntos = []) {
-  const key = getOpenRouterKey();
-  if (!key) return null; // Skip if no key
-
   const freeModels = [
     "google/gemini-2.5-flash",
     "google/gemini-flash-1.5",
@@ -282,18 +258,14 @@ async function callOpenRouterAPI(systemPrompt, userText, adjuntos = []) {
   for (const model of freeModels) {
     try {
       console.log(`[OpenRouter] Intentando modelo: ${model}`);
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetch("/api/openrouter", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${key}`,
-          "HTTP-Referer": window.location.origin,
-          "X-Title": "SAMI-Lexmark"
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           model,
-          messages,
-          max_tokens: 4000
+          messages
         })
       });
 
