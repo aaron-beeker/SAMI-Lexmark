@@ -17,7 +17,7 @@ export function checkPrinterAlerts(p) {
   
   if (p.estado_funcionamiento) {
     const statusLower = p.estado_funcionamiento.toLowerCase();
-    if (statusLower.includes("advertencia") || statusLower.includes("conexion") || statusLower.includes("conexión")) {
+    if (statusLower.includes("advertencia") && !statusLower.includes("conexion") && !statusLower.includes("conexión")) {
       return true;
     }
   }
@@ -126,7 +126,8 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
   const [editIp, setEditIp] = useState("");
   const [editEstadisticas, setEditEstadisticas] = useState({
     hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
-    caras_impresas: { total: 0, imprimir: 0, copiar: 0 }
+    caras_impresas: { total: 0, imprimir: 0, copiar: 0 },
+    caras_cargadas: { total: 0 }
   });
   const [editFuncionamientoAuto, setEditFuncionamientoAuto] = useState(true);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -232,6 +233,10 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       if (p.estado_funcionamiento === "En Mantenimiento" && !hasSeriousObs && !levelIsZero) {
         return "Operativo";
       }
+      const isConnectionWarning = p.estado_funcionamiento.toLowerCase().includes("conexion") || p.estado_funcionamiento.toLowerCase().includes("conexión");
+      if (isConnectionWarning) {
+        return "Operativo";
+      }
       return p.estado_funcionamiento;
     }
     // Fallback actual si no tiene estado guardado...
@@ -298,7 +303,8 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditIp(printer.ip || "");
     setEditEstadisticas(printer.estadisticas || {
       hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
-      caras_impresas: { total: 0, imprimir: 0, copiar: 0 }
+      caras_impresas: { total: 0, imprimir: 0, copiar: 0 },
+      caras_cargadas: { total: 0 }
     });
 
     const storedStatus = printer.estado_funcionamiento || getPrinterStatus(printer);
@@ -332,7 +338,8 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditIp("");
     setEditEstadisticas({
       hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
-      caras_impresas: { total: 0, imprimir: 0, copiar: 0 }
+      caras_impresas: { total: 0, imprimir: 0, copiar: 0 },
+      caras_cargadas: { total: 0 }
     });
     setEditFuncionamiento("Operativo");
     setEditFuncionamientoAuto(true);

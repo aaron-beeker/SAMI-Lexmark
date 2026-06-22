@@ -223,9 +223,9 @@ export default function InventoryView({
                 const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? null;
                 const status = getPrinterStatus(printer);
                 const hasAlerts = checkPrinterAlerts(printer);
+                const isDisconnected = printer.estado_funcionamiento?.toLowerCase().includes("conexion") || printer.estado_funcionamiento?.toLowerCase().includes("conexión");
                 const isInSoporteCard = (printer.area_actual || "").toLowerCase().includes("soporte");
                 const isMurCard = (printer.ubicacion_entidad || "Hospital").toUpperCase() === "MUR";
-
                 const statusColor = status === "En Mantenimiento"
                   ? { stripe: "bg-blue-500",    badge: "bg-blue-500/10 text-blue-600 border border-blue-500/25",   icon: "build",       pulse: "animate-pulse-subtle" }
                   : hasAlerts
@@ -300,21 +300,24 @@ export default function InventoryView({
                           {isMurCard ? "MUR" : isInSoporteCard ? "En Soporte" : "En Servicio"}
                         </span>
 
-                        {/* IP / Connection */}
                         {printer.ip && printer.ip.trim() !== "" ? (
                           printer.ip.trim().toLowerCase() === "usb" ? (
                             <span className="text-[10px] font-bold text-secondary px-1.5 py-0.5 bg-secondary-fixed/50 rounded-md flex items-center gap-0.5">
-                              <span className="material-symbols-outlined text-[11px]">usb</span>USB
+                              <span className="material-symbols-outlined text-[11px] text-emerald-500">usb</span>USB
                             </span>
                           ) : (
                             <span className="text-[10px] font-bold text-secondary px-1.5 py-0.5 bg-secondary-fixed rounded-md flex items-center gap-0.5 font-mono">
-                              <span className="material-symbols-outlined text-[11px]">dns</span>
+                              {isDisconnected ? (
+                                <span className="relative flex h-1.5 w-1.5"><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span></span>
+                              ) : (
+                                <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span></span>
+                              )}
                               {printer.ip}
                             </span>
                           )
                         ) : (
                           <span className="text-[10px] font-bold text-outline px-1.5 py-0.5 bg-surface-container-high rounded-md flex items-center gap-0.5">
-                            <span className="material-symbols-outlined text-[10px]">link_off</span>
+                            <span className="material-symbols-outlined text-[10px] text-red-500">wifi_off</span>
                             Sin conexión
                           </span>
                         )}
@@ -361,7 +364,7 @@ export default function InventoryView({
 
                       {/* Statistics */}
                       {printer.estadisticas && (
-                        <div className="pt-2 border-t border-outline-variant/20 grid grid-cols-2 gap-2">
+                        <div className="pt-2 border-t border-outline-variant/20 grid grid-cols-3 gap-2">
                           <div className="bg-surface-container-low p-1.5 rounded-lg border border-outline-variant/40 flex flex-col">
                              <div className="flex justify-between items-center text-[9px] text-outline font-bold uppercase mb-0.5">
                                <span className="flex items-center gap-0.5"><span className="material-symbols-outlined text-[10px]">description</span>Hojas</span>
@@ -382,6 +385,12 @@ export default function InventoryView({
                                <span className="text-tertiary font-semibold">Cop: {(printer.estadisticas.caras_impresas?.copiar ?? 0).toLocaleString("es-PE")}</span>
                              </div>
                           </div>
+                          <div className="bg-surface-container-low p-1.5 rounded-lg border border-outline-variant/40 flex flex-col justify-center">
+                             <div className="flex justify-between items-center text-[9px] text-outline font-bold uppercase mb-0.5">
+                               <span className="flex items-center gap-0.5"><span className="material-symbols-outlined text-[10px]">scanner</span>C. Carg.</span>
+                               <span className="text-on-surface font-black text-[10px]">{(printer.estadisticas.caras_cargadas?.total ?? 0).toLocaleString("es-PE")}</span>
+                             </div>
+                           </div>
                         </div>
                       )}
 
@@ -415,6 +424,7 @@ export default function InventoryView({
                   </thead>
                   <tbody className="divide-y divide-outline-variant border-b border-outline-variant font-medium">
                     {paginatedPrinters.map((printer) => {
+                      const isDisconnected = printer.estado_funcionamiento?.toLowerCase().includes("conexion") || printer.estado_funcionamiento?.toLowerCase().includes("conexión");
                       const isEditing = editingRowId === printer.id_serie;
                       const toner = isEditing
                         ? (editingRowData.consumibles?.toner_nivel ?? null)
@@ -510,24 +520,28 @@ export default function InventoryView({
                                   <span className="material-symbols-outlined text-primary text-[14px]">location_on</span>
                                   <span>{printer.area_actual}</span>
                                 </div>
-                                <div className="pl-4">
+                                <div className="pl-4 mt-0.5">
                                   {printer.ip && printer.ip.trim() !== "" ? (
                                     printer.ip.trim().toLowerCase() === "usb" ? (
                                       <span className="bg-secondary-fixed/50 text-on-secondary-container rounded-md px-1.5 py-0.5 inline-flex items-center gap-0.5 font-bold text-[9px]">
-                                        <span className="material-symbols-outlined text-[10px]">usb</span>
+                                        <span className="material-symbols-outlined text-[10px] text-emerald-500">usb</span>
                                         USB
                                       </span>
                                     ) : (
                                       <span className="text-[10px] text-outline font-mono flex items-center gap-1">
-                                        <span className="relative flex h-1.5 w-1.5">
-                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                                        </span>
+                                        {isDisconnected ? (
+                                          <span className="relative flex h-1.5 w-1.5"><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span></span>
+                                        ) : (
+                                          <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span></span>
+                                        )}
                                         IP: {printer.ip}
                                       </span>
                                     )
                                   ) : (
-                                    <span className="text-outline-variant italic text-[9px]">Sin conexión</span>
+                                    <span className="text-[10px] text-outline font-mono flex items-center gap-1">
+                                      <span className="material-symbols-outlined text-[12px] text-red-500">wifi_off</span>
+                                      Sin conexión
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -610,6 +624,7 @@ export default function InventoryView({
                               const carasTotal = printer.estadisticas?.caras_impresas?.total ?? 0;
                               const carasImp = printer.estadisticas?.caras_impresas?.imprimir ?? 0;
                               const carasCop = printer.estadisticas?.caras_impresas?.copiar ?? 0;
+                              const cargadasTotal = printer.estadisticas?.caras_cargadas?.total ?? 0;
 
                               return hasStats ? (
                                 <div className="space-y-2 min-w-[140px]">
@@ -631,6 +646,12 @@ export default function InventoryView({
                                     <div className="flex gap-1 text-[8.5px] font-bold">
                                       <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded flex-1 text-center" title="Impresas">Imp: {carasImp.toLocaleString("es-PE")}</span>
                                       <span className="bg-tertiary/10 text-tertiary px-1.5 py-0.5 rounded flex-1 text-center" title="Copiadas">Cop: {carasCop.toLocaleString("es-PE")}</span>
+                                    </div>
+                                  </div>
+                                  <div className="bg-surface-container-low border border-outline-variant/50 rounded-lg p-2 flex flex-col gap-1 shadow-sm justify-center">
+                                    <div className="flex items-center justify-between text-[9px] uppercase font-bold text-outline tracking-wider">
+                                      <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[11px]">scanner</span>Cargadas</span>
+                                      <span className="text-on-surface text-[11px] font-black">{cargadasTotal.toLocaleString("es-PE")}</span>
                                     </div>
                                   </div>
                                 </div>

@@ -31,6 +31,7 @@ export default function DashboardView({
 }) {
   const totalHojas = printers.reduce((acc, p) => acc + (p.estadisticas?.hojas_impresas?.total || 0), 0);
   const totalCaras = printers.reduce((acc, p) => acc + (p.estadisticas?.caras_impresas?.total || 0), 0);
+  const totalCarasCargadas = printers.reduce((acc, p) => acc + (p.estadisticas?.caras_cargadas?.total || 0), 0);
 
   const handleCloseMonth = async () => {
     if (!window.confirm("¿Confirmas que deseas registrar el corte de este mes con los totales actuales?")) return;
@@ -123,7 +124,7 @@ export default function DashboardView({
           )}
         </div>
         
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-5 bg-surface-container-low border border-outline-variant/60 rounded-2xl shadow-sm flex items-center justify-between">
             <div>
               <p className="text-outline uppercase tracking-widest font-extrabold text-[10px] mb-1 flex items-center gap-1">
@@ -150,6 +151,20 @@ export default function DashboardView({
             </div>
             <div className="w-12 h-12 rounded-full bg-tertiary/10 text-tertiary flex items-center justify-center">
               <span className="material-symbols-outlined text-2xl">auto_stories</span>
+            </div>
+          </div>
+          <div className="p-5 bg-surface-container-low border border-outline-variant/60 rounded-2xl shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-outline uppercase tracking-widest font-extrabold text-[10px] mb-1 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">scanner</span>
+                Total Caras Cargadas
+              </p>
+              <span className="text-2xl font-black text-on-surface">
+                {loadingPrinters ? "..." : totalCarasCargadas.toLocaleString("es-PE")}
+              </span>
+            </div>
+            <div className="w-12 h-12 rounded-full bg-secondary/10 text-secondary flex items-center justify-center">
+              <span className="material-symbols-outlined text-2xl">scanner</span>
             </div>
           </div>
         </div>

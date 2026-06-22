@@ -265,7 +265,7 @@ export default function PrinterModal({
           {/* Page Counters Section (SNMP statistics) */}
           <div className="pt-4 border-t border-outline-variant/30 space-y-2">
             <h4 className="text-[11px] font-bold text-outline uppercase tracking-wider font-extrabold text-primary">Contadores de Páginas (SNMP)</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/20 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/20 shadow-sm">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-[9px] font-black text-outline uppercase tracking-wider mb-2">
                   <span className="material-symbols-outlined text-[13px] text-primary">description</span>
@@ -303,6 +303,18 @@ export default function PrinterModal({
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] text-outline">Copia:</label>
                     <input type="number" min="0" value={editEstadisticas?.caras_impresas?.copiar ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, copiar: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated} />
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-[9px] font-black text-outline uppercase tracking-wider mb-2">
+                  <span className="material-symbols-outlined text-[13px] text-tertiary">scanner</span>
+                  <span>Caras Cargadas</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-on-surface">Total:</label>
+                    <input type="number" min="0" value={editEstadisticas?.caras_cargadas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_cargadas: {...editEstadisticas.caras_cargadas, total: Number(e.target.value)}})} className="w-[88px] bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-tertiary text-right focus:ring-tertiary focus:border-tertiary" disabled={!isAuthenticated} />
                   </div>
                 </div>
               </div>
