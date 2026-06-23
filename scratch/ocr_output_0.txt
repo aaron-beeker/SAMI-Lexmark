@@ -1,0 +1,69 @@
+4 ; 3 - - a - w
+Estadísticas dispositiVOwsgina 1)
+7464443228K26
+Informacion del trabajo
+Impresos por emulación
+“Emulación PS 9
+Emulación PCL5 63
+“Emulación PCLXL 220757
+Emulación PDF 13
+- “Copiar 2031
+“otro 4372
+¡Total 227245
+— Trabajos por longitud doc EE
+:Long trabajo Job Avg Job
+E : Count Length
+1-1... Páginas 83980 1
+2-4. .... Páginas 142368 2 i
+5-10 .* Páginas 751 6
+11-20 Páginas 96 15
+21-30. Páginas 24 25
+31-50 +. Páginas 17 39
+51-74... Paginas 6 57
+401+ "paginas 3 119 ”
+“Total” 227245 1 ba
+- Otros dato trabajo
+Ultimo impreso 2026-06-19
+‘Ultimo digit. 2026-06-19
+Cómputo de hojas de papel
+Cómputo hojas seleccionadas
+-. Hojas cargadas 255001
+Hojas.de papel cargadas
+=. .A4-Normal 255001
+Total. 255001
+Cómputo hojas impresas
+Hojas impresas
+Imprimir 250399
+“i. Copiar 4467
+-5* Total 254866
+Hojas de papel impresas
+: -4'Aá-Normal 254866
+Total - 254866
+Cómputo de caras del papel
+Cómputo:caras seleccionadas
+“Caras .cargadas 398134
+“Hojas de una cara cargadas
+- Aá-Normal 398134
+7 Total” 398134
+Cómpiito-caras impresas
+“Imprimir
+Mono 393064
++ Total 393064
+Copiar +
+: .: Mono” 4744
+eAñotal 4744
+Total...
+© iMono 397808
+4: Total 397808
+“Caras.impresas en negro
+-- A4-Normal 397808
+iv Total 397808
+Caras por intensidad del téner
+Intensidad 1 del tóner 129765
+Intensidad 2 del tóner 62
+Intensidad 3 del tóner 705
+Intensidad 4 del tóner 160198
+Intensidad 5 del tóner 24259
+Intensidad 6 del tóner 53942
+Intensidad 8 del tóner 130
+Tritensidad 10 del tóner 24082

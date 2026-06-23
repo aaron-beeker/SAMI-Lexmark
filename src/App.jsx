@@ -12,6 +12,7 @@ import StockModal from "./views/StockModal";
 import ExcelImportModal from "./views/ExcelImportModal";
 import LoginModal from "./views/LoginModal";
 import UsersView from "./views/UsersView";
+import RepuestosView from "./views/RepuestosView";
 
 export default function App() {
   const c = useAppController();
@@ -89,6 +90,16 @@ export default function App() {
               loadingBilling={c.loadingBilling}
               closeMonth={c.closeMonth}
               setSearchText={c.setSearchText}
+            />
+          )}
+
+          {c.currentTab === "repuestos" && (
+            <RepuestosView
+              printers={c.printers}
+              repuestos={c.repuestos}
+              handleDecrementStockClick={c.handleDecrementStockClick}
+              updateManualStock={c.updateManualStock}
+              isAuthenticated={c.isAuthenticated}
             />
           )}
 
@@ -184,6 +195,7 @@ export default function App() {
         {[
           { id: "dashboard", label: "Dashboard", icon: "dashboard" },
           { id: "inventario", label: "Inventario", icon: "inventory_2" },
+          { id: "repuestos", label: "Repuestos", icon: "layers" },
           { id: "chat", label: "Chat IA", icon: "smart_toy" },
           { id: "historial", label: "Historial", icon: "history" },
           { id: "usuarios", label: "Admins", icon: "group" }

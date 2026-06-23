@@ -1,12 +1,10 @@
 import React from "react";
-import StockView from "./StockView";
 import HospitalMapView from "./HospitalMapView";
 import BillingChartView from "./BillingChartView";
 
 export default function DashboardView({
   printers,
   loadingPrinters,
-  repuestos,
   kpiTotal,
   kpiOperativas,
   kpiAdvertencias,
@@ -21,8 +19,6 @@ export default function DashboardView({
   setCurrentTab,
   setFilterCriticidad,
   handleOpenEditModal,
-  handleDecrementStockClick,
-  updateManualStock,
   isAuthenticated,
   billingCycles,
   loadingBilling,
@@ -185,7 +181,7 @@ export default function DashboardView({
       {/* Desktop Two-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column (Main Stats & Alertas) */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className={`${isAuthenticated ? "lg:col-span-8" : "lg:col-span-12"} space-y-6`}>
           {/* Ubicación y Estados de Servicio Grid */}
           <section className="bg-surface border border-outline-variant rounded-2xl p-4 shadow-sm space-y-3">
             <h3 className="text-xs font-bold text-outline uppercase tracking-wider flex items-center gap-1.5">
@@ -391,10 +387,10 @@ export default function DashboardView({
           </section>
         </div>
 
-        {/* Right Column (AI Quick Link & Stock) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Quick Gemini Callout */}
-          {isAuthenticated && (
+        {/* Right Column (AI Quick Link) */}
+        {isAuthenticated && (
+          <div className="lg:col-span-4 space-y-6">
+            {/* Quick Gemini Callout */}
             <section
               onClick={() => setCurrentTab("chat")}
               className="p-5 bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-2xl shadow-md cursor-pointer hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-between"
@@ -408,16 +404,8 @@ export default function DashboardView({
               </div>
               <span className="material-symbols-outlined text-2xl opacity-80">chevron_right</span>
             </section>
-          )}
-
-          {/* Stock / Repuestos Section */}
-          <StockView
-            repuestos={repuestos}
-            handleDecrementStockClick={handleDecrementStockClick}
-            updateManualStock={updateManualStock}
-            isAuthenticated={isAuthenticated}
-          />
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

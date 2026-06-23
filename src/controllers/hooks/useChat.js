@@ -106,7 +106,7 @@ export function useChat() {
 
     const adjuntosArr = attachments
       .filter((a) => a.base64 && a.mimeType)
-      .map((a) => ({ base64: a.base64, mimeType: a.mimeType }));
+      .map((a) => ({ base64: a.base64, mimeType: a.mimeType, name: a.name }));
 
     try {
       const result = await analizarEvidenciaSuministros(userMsgText, adjuntosArr, printers);

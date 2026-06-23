@@ -1,0 +1,93 @@
+3 5 7 “ a a“ “ |
+Estadísticas dispositiVOwscina > |
+7464443228K26G
+Informacion n en una |
+
+Número n en una Caras Pginas lógicas
+1 en una 397807 397807
+2 en‘una - 1 2
+Velocidad impresion |
+paginaspor minuto Caras Páginas
+70 is, 381917 244440
+SE 12183 7882
+35,45 LA, 3708 2544
+Uso de escáner
+Caras digitalizadas
+A4-Copiar ADF 454
++ “Aá=Coptar superficie 2196
+-A4:Dig:-en Host ADF 706
+. +A4:Dig. .en Host superficie 15
+-“A4“Dig: en Host dúplex 2839
+A4“Copia dúplex 475
+“A5“Dig-“en Host superficie 3
+“Total: 6688
+Hojas digitalizadas
+“A4-Copiar ADF 454
+A4-Copiar superficie 2196 ,
+- A4:Dig: en Host ADF 706
+— TA4:Dig..en Host superficie 15
+A4-Dig::en Host dúplex 1421
+Aá-Copia dúplex 238
+-A5-Dig...en Host superficie 3
+“Total: 5033
+: Destinos de digitalización
+Copiar. - 3125
+Red 3563
+A EA
+SLEHOSE.. 3563
+Total 6688
+Superficie 2214
+ADF:- Símplex 1160
+ADF: :Dúplex 3314
+Datos:costes medioambientales
+Tiempo de encendido 6703:37:42
+Tiempo de. apagado 7658:19:06
+Tiémpo de actividad 1221:44:54
+Tiempo de inactividad 4406:49:53
+Tiempo de suspensión 1073:02:12
+Tiempo total de calentamiento 1:59:46
+Información de consumible
+: Cartucho negro
+
+“Número”de serie CAB252791B1A
+
+Fecha’ instalación 2026-05-20
+
+LEE 0% 100%
+
+-Nivel-"consumible _—_—lU]LZLZLz15a1l
+
+* Capacidad 55000
+
+¡Caras::por consumible 45763
+
+“Programa de devolución sí
+
+-DfaS restantes 8
+
+SMTER: 0 No
+
+original
+
+Historial de cobertura estimada
+
+Ultimo trabajo 8
+
+-.-Dúránte la vida de la impresora 4.5
+
+El consumible instalado 3.1
+
+5 Suministro anterior 3.2
+
+Kit mantenimiento
+
+RETO 0% 100%
+e Nivel consumible a ———"" > =>"T—m mm m=-=-———s
+
+-capácttiad 225000
+
+“*Caras"por consumible 162236
+
+: Revoluciones por consumible 1969442
+
+Cedo

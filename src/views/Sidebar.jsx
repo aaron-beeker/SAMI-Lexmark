@@ -4,6 +4,7 @@ export default function Sidebar({ currentTab, setCurrentTab, onOpenCreateModal, 
   const allTabs = [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
     { id: "inventario", label: "Inventario", icon: "inventory_2" },
+    { id: "repuestos", label: "Repuestos", icon: "layers" },
     { id: "chat", label: "Chat AI", icon: "smart_toy" },
     { id: "historial", label: "Historial", icon: "history" },
     { id: "usuarios", label: "Administradores", icon: "group" }
