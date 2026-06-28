@@ -10,9 +10,9 @@
 export const linearPredictionStrategy = (tonerNivel, unidadNivel, mantenimientoNivel) => {
   const hoy = new Date();
   
-  const diasToner = Math.round(((tonerNivel ?? 100) / 100) * 45);
-  const diasUnidad = Math.round(((unidadNivel ?? 100) / 100) * 45);
-  const diasMantenimiento = Math.round(((mantenimientoNivel ?? 100) / 100) * 45);
+  const diasToner = Math.round(((tonerNivel ?? 100) / 100) * 30);
+  const diasUnidad = Math.round(((unidadNivel ?? 100) / 100) * 30);
+  const diasMantenimiento = Math.round(((mantenimientoNivel ?? 100) / 100) * 30);
 
   const fechaToner = new Date();
   fechaToner.setDate(hoy.getDate() + diasToner);
@@ -45,4 +45,35 @@ export const linearPredictionStrategy = (tonerNivel, unidadNivel, mantenimientoN
  */
 export function calcularFechasPredictivas(tonerNivel, unidadNivel, mantenimientoNivel, strategy = linearPredictionStrategy) {
   return strategy(tonerNivel, unidadNivel, mantenimientoNivel);
+}
+
+/**
+ * Calculates the dynamic decreased level of a consumable based on a 30-day cycle (100% = 30 days)
+ * @param {number} nivelActual - The saved percentage level
+ * @param {Date|Timestamp} ultimaLectura - The date when the level was last saved
+ * @returns {number|null} The calculated current level based on days passed
+ */
+export function calcularNivelConsumible(nivelActual, ultimaLectura) {
+  if (nivelActual === null || nivelActual === undefined) return null;
+  if (!ultimaLectura) return nivelActual;
+
+  const hoy = new Date();
+  let fechaLectura;
+  if (typeof ultimaLectura.toDate === 'function') {
+    fechaLectura = ultimaLectura.toDate();
+  } else {
+    fechaLectura = new Date(ultimaLectura);
+  }
+
+  const diffTime = hoy - fechaLectura;
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return nivelActual;
+
+  const consumoDiario = 100 / 30; // 3.333% decrease per day
+  let nuevoNivel = nivelActual - (diffDays * consumoDiario);
+  
+  if (nuevoNivel < 0) nuevoNivel = 0;
+  
+  return Math.round(nuevoNivel);
 }

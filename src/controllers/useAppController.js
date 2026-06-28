@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { db } from "../firebase";
 import { seedPrintersIfEmpty, seedRepuestosIfEmpty } from "../services/SeedService";
+import { calcularNivelConsumible } from "../services/PredictionService";
 
 import {
   subscribePrinters,
@@ -72,7 +73,26 @@ export function useAppController() {
       unsubscribePrinters = subscribePrinters(
         db,
         (printerList) => {
-          printers.setPrinters(printerList);
+          const processedList = printerList.map(p => {
+            const isUsb = (p.ip || "").trim().toLowerCase() === "usb";
+            const status = printers.getPrinterStatus(p);
+            const isEnServicio = status !== "En Mantenimiento" && status !== "Inoperativo";
+
+            if (isUsb && isEnServicio && p.consumibles) {
+              return {
+                ...p,
+                consumibles: {
+                  ...p.consumibles,
+                  toner_nivel: calcularNivelConsumible(p.consumibles.toner_nivel, p.consumibles.ultima_lectura),
+                  unidad_imagen_nivel: calcularNivelConsumible(p.consumibles.unidad_imagen_nivel, p.consumibles.ultima_lectura),
+                  mantenimiento_kit_nivel: calcularNivelConsumible(p.consumibles.mantenimiento_kit_nivel, p.consumibles.ultima_lectura)
+                }
+              };
+            }
+            return p;
+          });
+
+          printers.setPrinters(processedList);
           printers.setLoadingPrinters(false);
         },
         (error) => {
