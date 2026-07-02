@@ -5,8 +5,21 @@ import { useDataContext } from '../contexts/DataContext';
 
 export default function PrinterModal() {
   const { isAuthenticated } = useAuthContext();
-  const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editEstadisticas, setEditEstadisticas, editFuncionamiento, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
+  const getWarrantyUrl = (modelo) => {
+    if (modelo === "MX431ADN") return "https://support.lexmark.com/es_es/warranty-service/printer/MX431/Lexmark-MX431adn.html";
+    if (modelo === "MX632ADWE") return "https://support.lexmark.com/es_es/warranty-service/printer/MX632/Lexmark-MX632adwe.html";
+    if (modelo === "MX722ADHE") return "https://support.lexmark.com/es_es/warranty-service/printer/MX722/Lexmark-MX722adhe.html";
+    return "https://support.lexmark.com/es_es/warranty-service.html";
+  };
 
+  const [isEditing, setIsEditing] = React.useState(false);
+  const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editGarantia, setEditGarantia, editEstadisticas, setEditEstadisticas, editFuncionamiento, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
+
+
+
+  React.useEffect(() => {
+    setIsEditing(isCreateMode);
+  }, [isCreateMode, selectedPrinter]);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
@@ -23,7 +36,7 @@ export default function PrinterModal() {
         <div className="flex justify-between items-center mb-6 shrink-0">
           <div>
             <h2 className="font-headline-lg text-lg text-primary font-bold">
-              {isCreateMode ? "Registrar Nueva Impresora" : "Editar Impresora"}
+              {isCreateMode ? "Registrar Nueva Impresora" : (isEditing ? "Editar Impresora" : "Detalles del Equipo")}
             </h2>
             <div className="flex gap-2 mt-1 flex-wrap">
               {!isCreateMode && selectedPrinter && (
@@ -43,18 +56,36 @@ export default function PrinterModal() {
                 const hasAlerts = editFuncionamiento === "Advertencia" || (selectedPrinter && checkPrinterAlerts(selectedPrinter));
                 const isMaint = status === "En Mantenimiento";
                 return (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 ${
-                    isMaint
-                      ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
-                      : hasAlerts
-                        ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-                        : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                    }`}>
-                    <span className="material-symbols-outlined text-[11px]">
-                      {isMaint ? "build" : hasAlerts ? "warning" : "check_circle"}
+                  <>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 ${
+                      isMaint
+                        ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                        : hasAlerts
+                          ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                          : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                      }`}>
+                      <span className="material-symbols-outlined text-[11px]">
+                        {isMaint ? "build" : hasAlerts ? "warning" : "check_circle"}
+                      </span>
+                      {status} {status === "Operativo" && hasAlerts && <span className="text-[9px] lowercase italic font-normal ml-0.5">(con alertas)</span>} {status !== "En Mantenimiento" ? ((editUbicacion || "Hospital") === "Hospital" && !(editArea || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
                     </span>
-                    {status} {status === "Operativo" && hasAlerts && <span className="text-[9px] lowercase italic font-normal ml-0.5">(con alertas)</span>} {status !== "En Mantenimiento" ? ((editUbicacion || "Hospital") === "Hospital" && !(editArea || "").toLowerCase().includes("soporte") ? " • En Servicio" : " • Sin Servicio") : ""}
-                  </span>
+                  {!isCreateMode && selectedPrinter && selectedPrinter.garantia_vencimiento && (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 ${
+                      new Date() > new Date(selectedPrinter.garantia_vencimiento + "T23:59:59") 
+                      ? "bg-red-500/10 text-red-600 border border-red-500/20" 
+                      : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                    }`}>
+                      <span className="material-symbols-outlined text-[11px]">security</span>
+                      {new Date() > new Date(selectedPrinter.garantia_vencimiento + "T23:59:59") ? "Garantía Vencida" : "Garantía Activa"}
+                    </span>
+                  )}
+                  {!isCreateMode && selectedPrinter && !selectedPrinter.garantia_vencimiento && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-0.5 bg-gray-500/10 text-gray-500 border border-gray-500/20">
+                      <span className="material-symbols-outlined text-[11px]">help</span>
+                      Sin Garantía Reg.
+                    </span>
+                  )}
+                  </>
                 );
               })()}
             </div>
@@ -72,7 +103,14 @@ export default function PrinterModal() {
         <div className="space-y-4 mb-6 flex-grow">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Número de Serie</label>
+              <div className="flex justify-between items-center ml-1">
+                <label className="text-[11px] font-bold text-outline uppercase tracking-wider">Número de Serie</label>
+                {!isCreateMode && (
+                  <a href={getWarrantyUrl(editModelo)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-[10px]">open_in_new</span> Lexmark Web
+                  </a>
+                )}
+              </div>
               <input
                 type="text"
                 value={editIdSerie}
@@ -80,7 +118,7 @@ export default function PrinterModal() {
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm uppercase"
                 placeholder="Ej. 701924410D8X7"
                 required
-                disabled={!isAuthenticated}
+                disabled={!isAuthenticated || !isEditing}
               />
             </div>
             <div className="space-y-1">
@@ -89,7 +127,7 @@ export default function PrinterModal() {
                 value={editModelo}
                 onChange={(e) => setEditModelo(e.target.value)}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
-                disabled={!isAuthenticated}
+                disabled={!isAuthenticated || !isEditing}
               >
                 <option value="MX431ADN">MX431ADN</option>
                 <option value="MX632ADWE">MX632ADWE</option>
@@ -107,7 +145,7 @@ export default function PrinterModal() {
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm disabled:opacity-50"
                 placeholder={editUbicacion === "MUR" || editUbicacion === "Lexmark" ? "No aplica para externos" : "Ej. Soporte, C.E Otorrino..."}
                 required={editUbicacion === "Hospital"}
-                disabled={!isAuthenticated || editUbicacion === "MUR" || editUbicacion === "Lexmark"}
+                disabled={!isAuthenticated || !isEditing || editUbicacion === "MUR" || editUbicacion === "Lexmark"}
               />
             </div>
             <div className="space-y-1">
@@ -120,7 +158,7 @@ export default function PrinterModal() {
                   if (val === "MUR" || val === "Lexmark") setEditArea("-");
                 }}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm text-on-surface"
-                disabled={!isAuthenticated}
+                disabled={!isAuthenticated || !isEditing}
               >
                 <option value="Hospital">Hospital</option>
                 <option value="MUR">MUR</option>
@@ -141,7 +179,7 @@ export default function PrinterModal() {
                   onChange={(e) => setEditToner(Number(e.target.value))}
                   className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                   required
-                  disabled={!isAuthenticated}
+                  disabled={!isAuthenticated || !isEditing}
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
@@ -158,7 +196,7 @@ export default function PrinterModal() {
                   onChange={(e) => setEditMantenimiento(Number(e.target.value))}
                   className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                   required
-                  disabled={!isAuthenticated}
+                  disabled={!isAuthenticated || !isEditing}
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
@@ -175,14 +213,14 @@ export default function PrinterModal() {
                   onChange={(e) => setEditUnit(Number(e.target.value))}
                   className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 pr-8 focus:ring-primary focus:border-primary font-body-md text-xs"
                   required
-                  disabled={!isAuthenticated}
+                  disabled={!isAuthenticated || !isEditing}
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Dirección IP</label>
               <input
@@ -191,18 +229,28 @@ export default function PrinterModal() {
                 onChange={(e) => setEditIp(e.target.value)}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
                 placeholder="Ej. 192.168.1.15 (Opcional)"
-                disabled={!isAuthenticated}
+                disabled={!isAuthenticated || !isEditing}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Código de Caso CAS</label>
+              <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider text-green-600">Vencimiento Garantía</label>
+              <input
+                type="date"
+                value={editGarantia || ""}
+                onChange={(e) => setEditGarantia(e.target.value)}
+                className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
+                disabled={!isAuthenticated || !isEditing}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">Código CAS</label>
               <input
                 type="text"
                 value={editCasCode}
                 onChange={(e) => setEditCasCode(e.target.value)}
                 className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm"
                 placeholder="Ej. CAS-6013278-V6N2C5 (Opcional)"
-                disabled={!isAuthenticated}
+                disabled={!isAuthenticated || !isEditing}
               />
             </div>
           </div>
@@ -214,7 +262,7 @@ export default function PrinterModal() {
               onChange={(e) => setEditDetalleCaso(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm h-16 resize-none"
               placeholder="Escribe aquí los detalles, diagnóstico o notas para este caso CAS (Opcional)..."
-              disabled={!isAuthenticated}
+              disabled={!isAuthenticated || !isEditing}
             />
           </div>
 
@@ -225,7 +273,7 @@ export default function PrinterModal() {
               onChange={(e) => setEditObservaciones(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 focus:ring-primary focus:border-primary font-body-md text-sm resize-none h-16"
               placeholder="Notas o fallas (Ej. Se traba papel...)"
-              disabled={!isAuthenticated}
+              disabled={!isAuthenticated || !isEditing}
             />
             </div>
 
@@ -241,15 +289,15 @@ export default function PrinterModal() {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] font-bold text-on-surface">Total:</label>
-                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, total: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-primary text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated} />
+                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, total: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-primary text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated || !isEditing} />
                   </div>
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] text-outline">Impresión:</label>
-                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.imprimir ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, imprimir: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated} />
+                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.imprimir ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, imprimir: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated || !isEditing} />
                   </div>
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] text-outline">Copia:</label>
-                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.copiar ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, copiar: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated} />
+                    <input type="number" min="0" value={editEstadisticas?.hojas_impresas?.copiar ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, hojas_impresas: {...editEstadisticas.hojas_impresas, copiar: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-primary focus:border-primary" disabled={!isAuthenticated || !isEditing} />
                   </div>
                 </div>
               </div>
@@ -261,15 +309,15 @@ export default function PrinterModal() {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] font-bold text-on-surface">Total:</label>
-                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, total: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-secondary text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated} />
+                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, total: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-secondary text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated || !isEditing} />
                   </div>
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] text-outline">Impresión:</label>
-                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.imprimir ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, imprimir: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated} />
+                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.imprimir ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, imprimir: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated || !isEditing} />
                   </div>
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] text-outline">Copia:</label>
-                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.copiar ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, copiar: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated} />
+                    <input type="number" min="0" value={editEstadisticas?.caras_impresas?.copiar ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_impresas: {...editEstadisticas.caras_impresas, copiar: Number(e.target.value)}})} className="w-24 bg-surface border border-outline-variant rounded-lg p-1.5 text-[10px] text-right focus:ring-secondary focus:border-secondary" disabled={!isAuthenticated || !isEditing} />
                   </div>
                 </div>
               </div>
@@ -281,7 +329,7 @@ export default function PrinterModal() {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] font-bold text-on-surface">Total:</label>
-                    <input type="number" min="0" value={editEstadisticas?.caras_cargadas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_cargadas: {...editEstadisticas.caras_cargadas, total: Number(e.target.value)}})} className="w-[88px] bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-tertiary text-right focus:ring-tertiary focus:border-tertiary" disabled={!isAuthenticated} />
+                    <input type="number" min="0" value={editEstadisticas?.caras_cargadas?.total ?? 0} onChange={(e) => setEditEstadisticas({...editEstadisticas, caras_cargadas: {...editEstadisticas.caras_cargadas, total: Number(e.target.value)}})} className="w-[88px] bg-surface border border-outline-variant rounded-lg p-1.5 text-xs font-black text-tertiary text-right focus:ring-tertiary focus:border-tertiary" disabled={!isAuthenticated || !isEditing} />
                   </div>
                 </div>
               </div>
@@ -340,6 +388,7 @@ export default function PrinterModal() {
                           const histStatus = hist.estado_funcionamiento || hist.estado_criticidad || "Operativo";
                           const isInop = histStatus === "Inoperativo" || histStatus === "Crítico" || histStatus === "En Mantenimiento";
                           const isAdv = histStatus === "Advertencia";
+                        
                           return (
                             <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider border ${
                               isInop
@@ -419,43 +468,63 @@ export default function PrinterModal() {
         {/* Actions */}
         <div className="flex flex-col-reverse sm:flex-row-reverse gap-3 pb-4 sm:pb-0 shrink-0">
           {isAuthenticated ? (
-            <>
-              <button
-                type="submit"
-                disabled={savingEdit}
-                className="w-full sm:w-auto px-6 py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
-              >
-                {savingEdit ? (
-                  <>
-                    <span className="material-symbols-outlined text-sm animate-spin">sync</span>
-                    <span>Guardando...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Guardar Cambios</span>
-                    <span className="material-symbols-outlined text-sm">save</span>
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                className="w-full sm:w-auto px-6 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm"
-                onClick={handleCloseEditModal}
-              >
-                Cancelar
-              </button>
-              {!isCreateMode && (
+            !isEditing ? (
+              <>
                 <button
                   type="button"
-                  disabled={savingEdit}
-                  onClick={handleDeletePrinter}
-                  className="w-full sm:w-auto px-6 py-3.5 bg-error-container text-on-error-container border border-error/20 font-bold rounded-2xl active:scale-95 transition-all hover:bg-error-container/80 text-sm flex items-center justify-center gap-1.5 sm:mr-auto"
+                  onClick={(e) => { e.preventDefault(); setIsEditing(true); }}
+                  className="w-full sm:w-auto px-6 py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
                 >
-                  <span className="material-symbols-outlined text-sm">delete</span>
-                  <span>Eliminar</span>
+                  <span className="material-symbols-outlined text-sm">edit</span>
+                  <span>Editar Equipo</span>
                 </button>
-              )}
-            </>
+                <button
+                  type="button"
+                  className="w-full sm:w-auto px-6 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm"
+                  onClick={handleCloseEditModal}
+                >
+                  Cerrar
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="w-full sm:w-auto px-6 py-3.5 bg-primary text-on-primary font-bold rounded-2xl shadow-lg active:scale-95 hover:bg-primary-container transition-all text-sm flex items-center justify-center gap-1.5"
+                >
+                  {savingEdit ? (
+                    <>
+                      <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Guardar Cambios</span>
+                      <span className="material-symbols-outlined text-sm">save</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="w-full sm:w-auto px-6 py-3.5 border border-outline-variant text-on-surface-variant font-bold rounded-2xl active:scale-95 transition-all hover:bg-surface-container-low text-sm"
+                  onClick={() => isCreateMode ? handleCloseEditModal() : setIsEditing(false)}
+                >
+                  Cancelar
+                </button>
+                {!isCreateMode && (
+                  <button
+                    type="button"
+                    disabled={savingEdit}
+                    onClick={handleDeletePrinter}
+                    className="w-full sm:w-auto px-6 py-3.5 bg-error-container text-on-error-container border border-error/20 font-bold rounded-2xl active:scale-95 transition-all hover:bg-error-container/80 text-sm flex items-center justify-center gap-1.5 sm:mr-auto"
+                  >
+                    <span className="material-symbols-outlined text-sm">delete</span>
+                    <span>Eliminar</span>
+                  </button>
+                )}
+              </>
+            )
           ) : (
             <button
               type="button"

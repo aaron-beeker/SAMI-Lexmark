@@ -92,10 +92,23 @@ export function useStock() {
 
     setSavingStock(true);
     try {
-      // 1. Decrement Stock count in Firestore
-      await dbUpdateStock(db, modelo, {
-        [field]: newValue
-      });
+      // 1. Determine if this is a transfer to Hospital
+      let isTransferToHospital = false;
+      let updatePayload = { [field]: newValue };
+      let newHospitalValue = 0;
+      let hospitalField = "";
+      
+      if (origin === "Depósito" && (!stockTargetPrinterId || stockTargetPrinterId === "none")) {
+        isTransferToHospital = true;
+        hospitalField = field.replace('_deposito', '_hospital');
+        const matchedStock = repuestos.find((r) => r.id === modelo);
+        const currentHospitalValue = matchedStock ? (matchedStock[hospitalField] || 0) : 0;
+        newHospitalValue = currentHospitalValue + 1;
+        updatePayload[hospitalField] = newHospitalValue;
+      }
+
+      // Decrement (and potentially increment) Stock count in Firestore
+      await dbUpdateStock(db, modelo, updatePayload);
 
       // 2. If a printer was selected, update its consumable to 100% and save to history
       if (stockTargetPrinterId && stockTargetPrinterId !== "none") {
@@ -165,19 +178,32 @@ export function useStock() {
       }
 
       // Save to General History (Stock reduction event)
-      await addGeneralHistoryLog(db, {
-        tipo: "stock",
-        modelo,
-        insumo,
-        origen: origin,
-        cantidad_anterior: Number(currentValue),
-        cantidad_nueva: Number(newValue),
-        tipo_actualizacion: "Consumo de Repuesto",
-        observaciones:
-          stockTargetPrinterId && stockTargetPrinterId !== "none"
-            ? `Se descontó 1 unidad de ${insumo} (${origin}) para instalar en impresora S/N: ${stockTargetPrinterId}.`
-            : `Se descontó 1 unidad de ${insumo} (${origin}) sin impresora asociada.`
-      });
+      if (isTransferToHospital) {
+        await addGeneralHistoryLog(db, {
+          tipo: "stock",
+          modelo,
+          insumo,
+          origen: "Depósito -> Hospital",
+          cantidad_anterior: Number(currentValue),
+          cantidad_nueva: Number(newValue),
+          tipo_actualizacion: "Transferencia de Stock",
+          observaciones: `Transferencia automática de 1 unidad de ${insumo} desde Depósito hacia Hospital.`
+        });
+      } else {
+        await addGeneralHistoryLog(db, {
+          tipo: "stock",
+          modelo,
+          insumo,
+          origen: origin,
+          cantidad_anterior: Number(currentValue),
+          cantidad_nueva: Number(newValue),
+          tipo_actualizacion: "Consumo de Repuesto",
+          observaciones:
+            stockTargetPrinterId && stockTargetPrinterId !== "none"
+              ? `Se descontó 1 unidad de ${insumo} (${origin}) para instalar en impresora S/N: ${stockTargetPrinterId}.`
+              : `Se descontó 1 unidad de ${insumo} (${origin}) sin impresora asociada.`
+        });
+      }
 
       alert("Inventario de repuestos y estado del equipo actualizados correctamente.");
     } catch (e) {

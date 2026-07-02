@@ -125,6 +125,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
   const [editUbicacion, setEditUbicacion] = useState("Hospital");
   const [editFuncionamiento, setEditFuncionamiento] = useState("Operativo");
   const [editIp, setEditIp] = useState("");
+  const [editGarantia, setEditGarantia] = useState("");
   const [editEstadisticas, setEditEstadisticas] = useState({
     hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
     caras_impresas: { total: 0, imprimir: 0, copiar: 0 },
@@ -301,6 +302,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditDetalleCaso(printer.detalle_caso || "");
     setEditUbicacion(printer.ubicacion_entidad || "Hospital");
     setEditIp(printer.ip || "");
+    setEditGarantia(printer.garantia_vencimiento || "");
     setEditEstadisticas(printer.estadisticas || {
       hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
       caras_impresas: { total: 0, imprimir: 0, copiar: 0 },
@@ -336,6 +338,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditDetalleCaso("");
     setEditUbicacion("Hospital");
     setEditIp("");
+      setEditGarantia("");
     setEditEstadisticas({
       hojas_impresas: { total: 0, imprimir: 0, copiar: 0 },
       caras_impresas: { total: 0, imprimir: 0, copiar: 0 },
@@ -436,6 +439,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
           },
           prediccion: prediction,
           estadisticas: updatedEstadisticas,
+          garantia_vencimiento: editGarantia || null,
           ultima_actualizacion: Timestamp.now()
         };
 
@@ -486,6 +490,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             },
             prediccion: prediction,
             estadisticas: updatedEstadisticas,
+            garantia_vencimiento: editGarantia || null,
             ultima_actualizacion: Timestamp.now()
           };
 
@@ -522,6 +527,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             "consumibles.ultima_lectura": new Date(),
             prediccion: prediction,
             estadisticas: updatedEstadisticas,
+            garantia_vencimiento: editGarantia || null,
             ultima_actualizacion: Timestamp.now()
           };
 
@@ -1129,6 +1135,8 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     setEditFuncionamiento,
     editIp,
     setEditIp,
+    editGarantia,
+    setEditGarantia,
     editEstadisticas,
     setEditEstadisticas,
     editFuncionamientoAuto,

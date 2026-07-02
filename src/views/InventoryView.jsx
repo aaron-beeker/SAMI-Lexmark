@@ -14,6 +14,22 @@ export default function InventoryView() {
     handleOpenEditModal, getPrinterStatus, checkPrinterAlerts, 
     currentPage, setCurrentPage, totalPages, paginatedPrinters 
   } = useDataContext();
+  const renderWarrantyBadge = (printer) => {
+    if (!printer.garantia_vencimiento) return null;
+    const isExpired = new Date() > new Date(printer.garantia_vencimiento + "T23:59:59");
+    if (isExpired) {
+      return (
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 bg-red-500/10 text-red-600 border border-red-500/20" title={`Venció: ${printer.garantia_vencimiento}`}>
+          <span className="material-symbols-outlined text-[10px]">security</span>Vencida
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" title={`Vence: ${printer.garantia_vencimiento}`}>
+        <span className="material-symbols-outlined text-[10px]">security</span>Activa
+      </span>
+    );
+  };
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
@@ -165,8 +181,9 @@ export default function InventoryView() {
                                     {copiedSerialId === printer.id_serie ? "done" : "content_copy"}
                                   </span>
                                 </button>
+                                {renderWarrantyBadge(printer)}
                               </div>
-                              <div className="flex items-center gap-2 text-xs">
+                              <div className="flex items-center gap-2 text-xs flex-wrap">
                                 {printer.ip && printer.ip.trim() !== "" ? (
                                   printer.ip.trim().toLowerCase() === "usb" ? (
                                     <span className="text-emerald-600 font-bold flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">usb</span>USB</span>
@@ -263,7 +280,10 @@ export default function InventoryView() {
                      <div className="flex justify-between items-start">
                        <div className="flex flex-col gap-1">
                          <span className="text-[10px] font-bold text-outline uppercase">{printer.modelo}</span>
-                         <span className="font-mono font-black text-base text-on-surface">{printer.id_serie}</span>
+                         <div className="flex items-center gap-2">
+                           <span className="font-mono font-black text-base text-on-surface">{printer.id_serie}</span>
+                           {renderWarrantyBadge(printer)}
+                         </div>
                        </div>
                        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${statusColor}`}>
                          {status}

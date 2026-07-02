@@ -83,12 +83,12 @@ export default function ReplenishmentView() {
   const grandTotalToBuy = totalBuyToner + totalBuyUnit + totalBuyMaint;
 
   return (
-    <section className="space-y-4">
+    <section className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl p-6 shadow-sm space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <h2 className="font-headline-md text-lg text-on-background font-bold flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">shopping_cart</span>
-          Asistente de Reabastecimiento
-        </h2>
+        <h3 className="text-xs font-black text-outline uppercase tracking-wider flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[16px]">shopping_cart</span>
+          Análisis de Compras
+        </h3>
         
         <div className="flex items-center gap-2">
           <button
@@ -108,44 +108,44 @@ export default function ReplenishmentView() {
       </div>
 
       {/* Summary Banner */}
-      <div className={`p-4 border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+      <div className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
         grandTotalToBuy > 0 
-          ? "bg-amber-500/10 border-amber-500/20 text-amber-900 dark:text-amber-200" 
-          : "bg-emerald-500/10 border-emerald-500/20 text-emerald-900 dark:text-emerald-200"
+          ? "bg-amber-500/5 border-amber-500/20 text-amber-900 dark:text-amber-100" 
+          : "bg-emerald-500/5 border-emerald-500/20 text-emerald-900 dark:text-emerald-100"
       }`}>
-        <div className="flex items-center gap-2.5">
-          <span className={`material-symbols-outlined text-2xl ${
-            grandTotalToBuy > 0 ? "text-amber-600 animate-pulse-subtle" : "text-emerald-600"
+        <div className="flex items-center gap-3">
+          <span className={`material-symbols-outlined text-3xl ${
+            grandTotalToBuy > 0 ? "text-amber-500 animate-pulse-subtle" : "text-emerald-500"
           }`}>
             {grandTotalToBuy > 0 ? "shopping_basket" : "check_circle"}
           </span>
-          <div>
-            <p className="font-bold text-sm">
+          <div className="flex flex-col">
+            <span className="font-black text-sm tracking-tight">
               {grandTotalToBuy > 0 
-                ? `Se requiere comprar ${grandTotalToBuy} consumibles en total.`
-                : "¡Todo en orden! El stock actual de repuestos cubre la necesidad actual."}
-            </p>
-            <p className="text-xs opacity-85">
-              Comparación de consumibles agotados en impresoras (≤15%) contra repuestos disponibles.
-            </p>
+                ? `Faltan ${grandTotalToBuy} consumibles`
+                : "Cobertura de Stock al 100%"}
+            </span>
+            <span className="text-[10px] uppercase font-bold opacity-70 tracking-wider">
+              Equipos Agotados (≤15%) vs Stock Disponible
+            </span>
           </div>
         </div>
 
         {grandTotalToBuy > 0 && (
-          <div className="flex flex-wrap gap-2 text-xs font-bold">
+          <div className="flex gap-2 text-[10px] font-bold uppercase tracking-wider">
             {totalBuyToner > 0 && (
-              <span className="px-2 py-1 bg-primary/10 text-primary border border-primary/25">
+              <span className="px-2 py-1 bg-primary/10 text-primary rounded-md">
                 Tóner: {totalBuyToner}
               </span>
             )}
             {totalBuyUnit > 0 && (
-              <span className="px-2 py-1 bg-secondary-fixed/40 text-secondary border border-secondary/35">
+              <span className="px-2 py-1 bg-secondary/10 text-secondary rounded-md">
                 U. Imagen: {totalBuyUnit}
               </span>
             )}
             {totalBuyMaint > 0 && (
-              <span className="px-2 py-1 bg-tertiary-container text-tertiary border border-tertiary/25">
-                Kit Mant.: {totalBuyMaint}
+              <span className="px-2 py-1 bg-tertiary/10 text-tertiary rounded-md">
+                Mant: {totalBuyMaint}
               </span>
             )}
           </div>
@@ -155,8 +155,8 @@ export default function ReplenishmentView() {
       {/* Grid of models */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredModels.length === 0 ? (
-          <div className="col-span-full bg-surface border border-outline-variant p-6 text-center text-on-surface-variant text-xs">
-            No se encontraron modelos que requieran compras.
+          <div className="col-span-full bg-surface-container-lowest border border-outline-variant/50 rounded-xl p-6 text-center text-outline font-bold text-xs uppercase tracking-wider">
+            No se requieren compras
           </div>
         ) : (
           filteredModels.map((item) => {
@@ -164,26 +164,23 @@ export default function ReplenishmentView() {
             return (
               <div 
                 key={item.model} 
-                className={`bg-surface border p-4 transition-all flex flex-col justify-between ${
+                className={`bg-surface-container-low rounded-xl border p-4 transition-all flex flex-col justify-between ${
                   hasLacks 
-                    ? "border-amber-500/40 hover:border-amber-500 shadow-sm" 
-                    : "border-outline-variant hover:border-outline-variant/80 shadow-sm"
+                    ? "border-amber-500/30 hover:border-amber-500/50 hover:shadow-sm" 
+                    : "border-outline-variant/30 hover:border-outline-variant/60"
                 }`}
               >
                 {/* Header */}
-                <div className="flex justify-between items-start mb-3 pb-2 border-b border-outline-variant/30">
-                  <div>
-                    <h3 className="font-bold text-base text-on-background">{item.model}</h3>
-                    <span className="text-[10px] text-outline font-semibold uppercase tracking-wider">
-                      Modelo Impresora
-                    </span>
+                <div className="flex justify-between items-start mb-3 pb-3 border-b border-outline-variant/20">
+                  <div className="flex flex-col">
+                    <span className="font-black text-sm text-on-surface tracking-tight">{item.model}</span>
                   </div>
-                  <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
+                  <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-md ${
                     hasLacks 
-                      ? "bg-amber-500/10 text-amber-600 border-amber-500/25 animate-pulse-subtle" 
-                      : "bg-emerald-500/10 text-emerald-600 border-emerald-500/25"
+                      ? "bg-amber-500/10 text-amber-600 animate-pulse-subtle" 
+                      : "bg-emerald-500/10 text-emerald-600"
                   }`}>
-                    {hasLacks ? "Comprar Faltantes" : "Abastecido"}
+                    {hasLacks ? "Comprar" : "OK"}
                   </span>
                 </div>
 

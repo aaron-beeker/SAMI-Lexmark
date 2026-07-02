@@ -10,31 +10,30 @@ export default function RepuestosView() {
   const { printers, repuestos, handleDecrementStockClick, updateManualStock } = useDataContext();
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col gap-1.5 border-b border-outline-variant/60 pb-4">
-        <h1 className="font-headline-lg text-2xl text-on-background font-bold flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary text-3xl">layers</span>
-          Gestión de Repuestos y Consumibles
-        </h1>
-        <p className="text-sm text-on-surface-variant font-medium">
-          Control de stock en depósito/hospital y análisis de necesidades de compra para reabastecimiento.
-        </p>
+    <div className="space-y-8 animate-fade-in pb-10">
+      
+      {/* Header Minimalista */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="font-headline-md text-2xl text-on-background font-black tracking-tight">Repuestos y Consumibles</h2>
+          <p className="text-sm text-outline font-medium mt-1">Gestión de stock, transferencias y análisis de reabastecimiento</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column - Replenishment / Shopping assistant */}
-        <div className="lg:col-span-7 space-y-6">
-          <ReplenishmentView printers={printers} repuestos={repuestos} />
-        </div>
-
-        {/* Right Column - Stock lists */}
-        <div className="lg:col-span-5 space-y-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+        {/* Left Column - Stock lists (Moved to left and made more prominent) */}
+        <div className="xl:col-span-6 space-y-6">
           <StockView
             repuestos={repuestos}
             handleDecrementStockClick={handleDecrementStockClick}
             updateManualStock={updateManualStock}
             isAuthenticated={isAuthenticated}
           />
+        </div>
+
+        {/* Right Column - Replenishment / Shopping assistant */}
+        <div className="xl:col-span-6 space-y-6">
+          <ReplenishmentView printers={printers} repuestos={repuestos} />
         </div>
       </div>
     </div>
