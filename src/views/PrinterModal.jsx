@@ -5,7 +5,7 @@ import { useDataContext } from '../contexts/DataContext';
 
 export default function PrinterModal() {
   const { isAuthenticated } = useAuthContext();
-  const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editEstadisticas, setEditEstadisticas, editFuncionamiento, setEditFuncionamiento, editFuncionamientoAuto, setEditFuncionamientoAuto, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
+  const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editEstadisticas, setEditEstadisticas, editFuncionamiento, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
 
 
   return (
@@ -287,6 +287,29 @@ export default function PrinterModal() {
               </div>
             </div>
           </div>
+
+          {/* Historial de Cargas de Hojas */}
+          {editEstadisticas?.caras_cargadas?.historial && editEstadisticas.caras_cargadas.historial.length > 0 && (
+            <div className="pt-4 border-t border-outline-variant/30 space-y-2">
+              <h4 className="text-[11px] font-bold text-outline uppercase tracking-wider text-tertiary">Historial de Cargas de Papel</h4>
+              <div className="max-h-32 overflow-y-auto pr-1 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {editEstadisticas.caras_cargadas.historial.map((carga, idx) => (
+                  <div key={idx} className="bg-surface-container-low border border-outline-variant/30 rounded-lg p-2 flex justify-between items-center text-xs shadow-sm">
+                    <span className="text-[10px] text-outline font-medium">
+                      {carga.fecha instanceof Date
+                        ? carga.fecha.toLocaleDateString("es-PE")
+                        : carga.fecha?.toDate
+                          ? carga.fecha.toDate().toLocaleDateString("es-PE")
+                          : carga.fecha 
+                            ? new Date(carga.fecha).toLocaleDateString("es-PE")
+                            : ""}
+                    </span>
+                    <span className="font-black text-tertiary">+{carga.cantidad}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Individual History Timeline in modal */}
           {selectedPrinterHistory.length > 0 && (

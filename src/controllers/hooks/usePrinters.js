@@ -374,6 +374,42 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       );
       const prediction = calcularFechasPredictivas(Number(editToner), Number(editUnit), Number(editMantenimiento));
 
+      // Lógica de Historial de Hojas Cargadas
+      let updatedEstadisticas = { ...editEstadisticas };
+      if (!isCreateMode && selectedPrinter) {
+        const oldCargadas = selectedPrinter.estadisticas?.caras_cargadas?.total || 0;
+        const newCargadas = editEstadisticas?.caras_cargadas?.total || 0;
+        if (newCargadas > oldCargadas) {
+          const diff = newCargadas - oldCargadas;
+          const currentHist = Array.isArray(updatedEstadisticas.caras_cargadas?.historial) 
+            ? updatedEstadisticas.caras_cargadas.historial 
+            : [];
+          updatedEstadisticas = {
+            ...updatedEstadisticas,
+            caras_cargadas: {
+              ...updatedEstadisticas.caras_cargadas,
+              historial: [
+                { fecha: new Date(), cantidad: diff },
+                ...currentHist
+              ]
+            }
+          };
+        }
+      } else if (isCreateMode) {
+        const newCargadas = editEstadisticas?.caras_cargadas?.total || 0;
+        if (newCargadas > 0) {
+          updatedEstadisticas = {
+            ...updatedEstadisticas,
+            caras_cargadas: {
+              ...updatedEstadisticas.caras_cargadas,
+              historial: [
+                { fecha: new Date(), cantidad: newCargadas }
+              ]
+            }
+          };
+        }
+      }
+
       if (isCreateMode) {
         const exists = printers.some((p) => p.id_serie.toUpperCase() === cleanId);
         if (exists) {
@@ -399,7 +435,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             ultima_lectura: new Date()
           },
           prediccion: prediction,
-          estadisticas: editEstadisticas,
+          estadisticas: updatedEstadisticas,
           ultima_actualizacion: Timestamp.now()
         };
 
@@ -449,7 +485,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
               ultima_lectura: new Date()
             },
             prediccion: prediction,
-            estadisticas: editEstadisticas,
+            estadisticas: updatedEstadisticas,
             ultima_actualizacion: Timestamp.now()
           };
 
@@ -485,7 +521,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             "consumibles.mantenimiento_kit_nivel": Number(editMantenimiento),
             "consumibles.ultima_lectura": new Date(),
             prediccion: prediction,
-            estadisticas: editEstadisticas,
+            estadisticas: updatedEstadisticas,
             ultima_actualizacion: Timestamp.now()
           };
 
