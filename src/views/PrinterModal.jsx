@@ -1,45 +1,12 @@
 import React from "react";
+import { useAuthContext } from '../contexts/AuthContext';
+import { useDataContext } from '../contexts/DataContext';
 
-export default function PrinterModal({
-  handleSavePrinterChanges,
-  handleCloseEditModal,
-  selectedPrinter,
-  isCreateMode,
-  editIdSerie,
-  setEditIdSerie,
-  editModelo,
-  setEditModelo,
-  editArea,
-  setEditArea,
-  editUbicacion,
-  setEditUbicacion,
-  editToner,
-  setEditToner,
-  editUnit,
-  setEditUnit,
-  editMantenimiento,
-  setEditMantenimiento,
-  editObservaciones,
-  setEditObservaciones,
-  editCasCode,
-  setEditCasCode,
-  editDetalleCaso,
-  setEditDetalleCaso,
-  editIp,
-  setEditIp,
-  editEstadisticas,
-  setEditEstadisticas,
-  editFuncionamiento,
-  setEditFuncionamiento,
-  editFuncionamientoAuto,
-  setEditFuncionamientoAuto,
-  selectedPrinterHistory,
-  handleDeleteHistoryItem,
-  handleDeletePrinter,
-  savingEdit,
-  checkPrinterAlerts,
-  isAuthenticated
-}) {
+
+export default function PrinterModal() {
+  const { isAuthenticated } = useAuthContext();
+  const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editEstadisticas, setEditEstadisticas, editFuncionamiento, setEditFuncionamiento, editFuncionamientoAuto, setEditFuncionamientoAuto, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
+
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">

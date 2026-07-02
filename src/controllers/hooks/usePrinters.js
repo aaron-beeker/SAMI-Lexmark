@@ -91,13 +91,14 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
   // Search & Filter State
   const [searchText, setSearchText] = useState("");
 
-  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
-  useEffect(() => {
+  const [prevSearchFilter, setPrevSearchFilter] = useState({ text: "", filter: filterCriticidad });
+  if (searchText !== prevSearchFilter.text || filterCriticidad !== prevSearchFilter.filter) {
+    setPrevSearchFilter({ text: searchText, filter: filterCriticidad });
     setCurrentPage(1);
-  }, [searchText, filterCriticidad]);
+  }
 
   // Inline Row Editing State for Desktop Excel-style Table
   const [editingRowId, setEditingRowId] = useState(null);
@@ -147,8 +148,6 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
           console.error("Error fetching printer history:", e);
         }
       );
-    } else {
-      setSelectedPrinterHistory([]);
     }
     return () => {
       if (unsubscribeSelectedHistory) unsubscribeSelectedHistory();
@@ -262,20 +261,21 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     return getBaseStatus(getPrinterStatus(p)) === "En Mantenimiento";
   };
 
-  // Reactively calculate functioning status when form inputs change if auto-calculate is enabled
-  useEffect(() => {
-    if (editFuncionamientoAuto) {
-      const computed = calculatePrinterStatus(
-        editArea,
-        Number(editToner),
-        Number(editUnit),
-        Number(editMantenimiento),
-        editObservaciones,
-        editUbicacion
-      );
-      setEditFuncionamiento(computed);
-    }
-  }, [editArea, editToner, editUnit, editMantenimiento, editObservaciones, editUbicacion, editFuncionamientoAuto]);
+  const [prevAutoCalcDeps, setPrevAutoCalcDeps] = useState("");
+  const currentDeps = JSON.stringify([editArea, editToner, editUnit, editMantenimiento, editObservaciones, editUbicacion, editFuncionamientoAuto]);
+  
+  if (editFuncionamientoAuto && currentDeps !== prevAutoCalcDeps) {
+    setPrevAutoCalcDeps(currentDeps);
+    const computed = calculatePrinterStatus(
+      editArea,
+      Number(editToner),
+      Number(editUnit),
+      Number(editMantenimiento),
+      editObservaciones,
+      editUbicacion
+    );
+    setEditFuncionamiento(computed);
+  }
 
   const handleCopySerial = (serial) => {
     navigator.clipboard.writeText(serial);
@@ -350,6 +350,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
   const handleCloseEditModal = () => {
     setIsModalOpen(false);
     setSelectedPrinter(null);
+    setSelectedPrinterHistory([]);
   };
 
   const handleSavePrinterChanges = async (e) => {

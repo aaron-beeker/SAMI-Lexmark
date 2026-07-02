@@ -1,34 +1,14 @@
 import React from "react";
+import { useAuthContext } from '../contexts/AuthContext';
+import { useUIContext } from '../contexts/UIContext';
+import { useDataContext } from '../contexts/DataContext';
 
-export default function InventoryView({
-  searchText,
-  setSearchText,
-  filterCriticidad,
-  setFilterCriticidad,
-  filteredPrinters,
-  loadingPrinters,
-  handleDownloadReport,
-  handleOpenCreateModal,
-  copiedSerialId,
-  handleCopySerial,
-  editingRowId,
-  setEditingRowId,
-  editingRowData,
-  setEditingRowData,
-  handleRowDataChange,
-  handleRowNestedDataChange,
-  handleStartRowEdit,
-  handleSaveRowEdit,
-  handleRowKeyDown,
-  handleOpenEditModal,
-  getPrinterStatus,
-  checkPrinterAlerts,
-  currentPage,
-  setCurrentPage,
-  totalPages,
-  paginatedPrinters,
-  isAuthenticated
-}) {
+
+export default function InventoryView() {
+  const { isAuthenticated } = useAuthContext();
+  const { filterCriticidad, setFilterCriticidad } = useUIContext();
+  const { searchText, setSearchText, filteredPrinters, loadingPrinters, handleDownloadReport, handleOpenCreateModal, copiedSerialId, handleCopySerial, editingRowId, setEditingRowId, editingRowData, setEditingRowData, handleRowDataChange, handleRowNestedDataChange, handleStartRowEdit, handleSaveRowEdit, handleRowKeyDown, handleOpenEditModal, getPrinterStatus, checkPrinterAlerts, currentPage, setCurrentPage, totalPages, paginatedPrinters } = useDataContext();
+
 
   return (
     <div className="space-y-5 animate-fade-in">

@@ -1,55 +1,30 @@
-import { useEffect } from "react";
-import { db } from "../firebase";
-import { seedPrintersIfEmpty, seedRepuestosIfEmpty } from "../services/SeedService";
-import { calcularNivelConsumible } from "../services/PredictionService";
+import React, { createContext, useContext, useEffect } from 'react';
+import { useUIContext } from './UIContext';
+import { useGeneralHistory } from '../controllers/hooks/useGeneralHistory';
+import { usePrinters } from '../controllers/hooks/usePrinters';
+import { useStock } from '../controllers/hooks/useStock';
+import { useChat } from '../controllers/hooks/useChat';
+import { useExcelImport } from '../controllers/hooks/useExcelImport';
+import { useBilling } from '../controllers/hooks/useBilling';
+import { db } from '../firebase';
+import { seedPrintersIfEmpty, seedRepuestosIfEmpty } from '../services/SeedService';
+import { subscribePrinters, createPrinter, updatePrinter, deletePrinterDoc, addPrinterHistory } from '../models/PrinterModel';
+import { subscribeRepuestos, updateStock } from '../models/StockModel';
+import { subscribeGeneralHistory } from '../models/HistoryModel';
+import { calcularNivelConsumible } from '../services/PredictionService';
+import { useNavigate } from 'react-router-dom';
 
-import {
-  subscribePrinters,
-  createPrinter,
-  updatePrinter,
-  deletePrinterDoc,
-  addPrinterHistory
-} from "../models/PrinterModel";
+const DataContext = createContext(null);
 
-import {
-  subscribeRepuestos,
-  updateStock
-} from "../models/StockModel";
-
-import {
-  subscribeGeneralHistory
-} from "../models/HistoryModel";
-
-// Import custom hooks (SRP)
-import { useNavigation } from "./hooks/useNavigation";
-import { useSettings } from "./hooks/useSettings";
-import { useGeneralHistory } from "./hooks/useGeneralHistory";
-import { usePrinters } from "./hooks/usePrinters";
-import { useStock } from "./hooks/useStock";
-import { useChat } from "./hooks/useChat";
-import { useExcelImport } from "./hooks/useExcelImport";
-import { useAuth } from "./hooks/useAuth";
-import { useBilling } from "./hooks/useBilling";
-
-export function useAppController() {
-  const navigation = useNavigation();
-  const settings = useSettings();
+export const DataProvider = ({ children }) => {
+  const { filterCriticidad } = useUIContext();
+  const navigate = useNavigate();
   const generalHistory = useGeneralHistory();
-  const auth = useAuth();
-
-  // Redirect guest if on restricted tab
-  useEffect(() => {
-    if (!auth.isAuthenticated && navigation.currentTab === "chat") {
-      navigation.setCurrentTab("dashboard");
-    }
-  }, [auth.isAuthenticated, navigation.currentTab]);
-
   const printers = usePrinters({
     db,
-    filterCriticidad: navigation.filterCriticidad,
+    filterCriticidad,
     addGeneralHistoryLog: generalHistory.addGeneralHistoryLog
   });
-
   const stock = useStock();
   const chat = useChat();
   const excelImport = useExcelImport();
@@ -133,8 +108,6 @@ export function useAppController() {
     };
   }, []);
 
-
-
   // Wires up and delegates actions that require cross-hook orchestration
   const handleConfirmStockReduction = () => {
     return stock.handleConfirmStockReduction(
@@ -156,7 +129,7 @@ export function useAppController() {
       generalHistory.addGeneralHistoryLog,
       printers.calculatePrinterStatus,
       chat.setChatMessages,
-      navigation.setCurrentTab
+      navigate
     );
   };
 
@@ -193,93 +166,12 @@ export function useAppController() {
     );
   };
 
-  return {
-    // Navigation
-    currentTab: navigation.currentTab,
-    setCurrentTab: navigation.setCurrentTab,
-    filterCriticidad: navigation.filterCriticidad,
-    setFilterCriticidad: navigation.setFilterCriticidad,
-
-    // Settings
-    showSettingsSaved: settings.showSettingsSaved,
-    handleSaveApiKey: settings.handleSaveApiKey,
-
+  const value = {
     // General History
     generalHistory: generalHistory.generalHistory,
 
     // Printers
-    printers: printers.printers,
-    loadingPrinters: printers.loadingPrinters,
-    searchText: printers.searchText,
-    setSearchText: printers.setSearchText,
-    editingRowId: printers.editingRowId,
-    setEditingRowId: printers.setEditingRowId,
-    editingRowData: printers.editingRowData,
-    setEditingRowData: printers.setEditingRowData,
-    copiedSerialId: printers.copiedSerialId,
-    handleCopySerial: printers.handleCopySerial,
-    isModalOpen: printers.isModalOpen,
-    selectedPrinter: printers.selectedPrinter,
-    selectedPrinterHistory: printers.selectedPrinterHistory,
-    editIdSerie: printers.editIdSerie,
-    setEditIdSerie: printers.setEditIdSerie,
-    editModelo: printers.editModelo,
-    setEditModelo: printers.setEditModelo,
-    editArea: printers.editArea,
-    setEditArea: printers.setEditArea,
-    editToner: printers.editToner,
-    setEditToner: printers.setEditToner,
-    editUnit: printers.editUnit,
-    setEditUnit: printers.setEditUnit,
-    editMantenimiento: printers.editMantenimiento,
-    setEditMantenimiento: printers.setEditMantenimiento,
-    editObservaciones: printers.editObservaciones,
-    setEditObservaciones: printers.setEditObservaciones,
-    editCasCode: printers.editCasCode,
-    setEditCasCode: printers.setEditCasCode,
-    editDetalleCaso: printers.editDetalleCaso,
-    setEditDetalleCaso: printers.setEditDetalleCaso,
-    editUbicacion: printers.editUbicacion,
-    setEditUbicacion: printers.setEditUbicacion,
-    editFuncionamiento: printers.editFuncionamiento,
-    setEditFuncionamiento: printers.setEditFuncionamiento,
-    editIp: printers.editIp,
-    setEditIp: printers.setEditIp,
-    editEstadisticas: printers.editEstadisticas,
-    setEditEstadisticas: printers.setEditEstadisticas,
-    editFuncionamientoAuto: printers.editFuncionamientoAuto,
-    setEditFuncionamientoAuto: printers.setEditFuncionamientoAuto,
-    savingEdit: printers.savingEdit,
-    isCreateMode: printers.isCreateMode,
-    checkPrinterAlerts: printers.checkPrinterAlerts,
-    getPrinterStatus: printers.getPrinterStatus,
-    isPrinterInoperative: printers.isPrinterInoperative,
-    handleOpenEditModal: printers.handleOpenEditModal,
-    handleOpenCreateModal: printers.handleOpenCreateModal,
-    handleCloseEditModal: printers.handleCloseEditModal,
-    handleSavePrinterChanges: printers.handleSavePrinterChanges,
-    handleRowDataChange: printers.handleRowDataChange,
-    handleRowNestedDataChange: printers.handleRowNestedDataChange,
-    handleStartRowEdit: printers.handleStartRowEdit,
-    handleSaveRowEdit: printers.handleSaveRowEdit,
-    handleRowKeyDown: printers.handleRowKeyDown,
-    handleDeletePrinter: printers.handleDeletePrinter,
-    handleDeleteHistoryItem: printers.handleDeleteHistoryItem,
-    handleDownloadReport: printers.handleDownloadReport,
-    filteredPrinters: printers.filteredPrinters,
-    kpiTotal: printers.kpiTotal,
-    kpiOperativas: printers.kpiOperativas,
-    kpiAdvertencias: printers.kpiAdvertencias,
-    kpiInoperativas: printers.kpiInoperativas,
-    kpiHospitalTotal: printers.kpiHospitalTotal,
-    kpiHospitalEnServicio: printers.kpiHospitalEnServicio,
-    kpiHospitalEnSoporte: printers.kpiHospitalEnSoporte,
-    kpiMurTotal: printers.kpiMurTotal,
-    kpiLexmarkTotal: printers.kpiLexmarkTotal,
-    currentPage: printers.currentPage,
-    setCurrentPage: printers.setCurrentPage,
-    totalPages: printers.totalPages,
-    paginatedPrinters: printers.paginatedPrinters,
+    ...printers,
 
     // Stock
     repuestos: stock.repuestos,
@@ -327,26 +219,19 @@ export function useAppController() {
     handleExcelUpload: excelImport.handleExcelUpload,
     handleConfirmExcelImport: handleConfirmExcelImport,
 
-    // Auth
-    user: auth.user,
-    isAuthenticated: auth.isAuthenticated,
-    isAuthLoading: auth.loading,
-    loginError: auth.loginError,
-    setLoginError: auth.setLoginError,
-    isLoginModalOpen: auth.isLoginModalOpen,
-    setIsLoginModalOpen: auth.setIsLoginModalOpen,
-    login: auth.login,
-    loginWithGoogle: auth.loginWithGoogle,
-    logout: auth.logout,
-    admins: auth.admins,
-    loadingAdmins: auth.loadingAdmins,
-    addAdmin: auth.addAdmin,
-    removeAdmin: auth.removeAdmin,
-    fetchAdmins: auth.fetchAdmins,
-
     // Billing
     billingCycles: billing.billingCycles,
     loadingBilling: billing.loadingBilling,
     closeMonth: billing.closeMonth
   };
-}
+
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+};
+
+export const useDataContext = () => {
+  const context = useContext(DataContext);
+  if (!context) {
+    throw new Error('useDataContext must be used within a DataProvider');
+  }
+  return context;
+};

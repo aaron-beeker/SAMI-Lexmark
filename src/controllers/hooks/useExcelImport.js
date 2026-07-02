@@ -288,7 +288,7 @@ export function useExcelImport() {
     addGeneralHistoryLog,
     calculateStatus,
     setChatMessages,
-    setCurrentTab
+    navigate
   ) => {
     if (!excelData || !excelData.equipos_normalizados || isExcelLoading) return;
 
@@ -435,7 +435,7 @@ export function useExcelImport() {
       setExcelData(null);
       setExcelFileName("");
 
-      setCurrentTab("chat");
+      navigate("/chat");
     } catch (error) {
       console.error("Error committing Excel import:", error);
       alert("Error al guardar registros de Excel: " + error.message);

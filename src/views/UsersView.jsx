@@ -1,12 +1,10 @@
 import React, { useState } from "react";
+import { useAuthContext } from '../contexts/AuthContext';
 
-export default function UsersView({ 
-  user, 
-  admins, 
-  loadingAdmins, 
-  addAdmin, 
-  removeAdmin 
-}) {
+
+export default function UsersView() {
+  const { user, admins, loadingAdmins, addAdmin, removeAdmin } = useAuthContext();
+
   const [emailInput, setEmailInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [feedback, setFeedback] = useState({ type: "", message: "" });

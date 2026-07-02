@@ -1,15 +1,10 @@
 import React from "react";
+import { useDataContext } from '../contexts/DataContext';
 
-export default function ExcelImportModal({
-  isExcelImportModalOpen,
-  excelFileName,
-  isExcelLoading,
-  excelData,
-  handleConfirmExcelImport,
-  setIsExcelImportModalOpen,
-  setExcelData,
-  setExcelFileName
-}) {
+
+export default function ExcelImportModal() {
+  const { isExcelImportModalOpen, excelFileName, isExcelLoading, excelData, handleConfirmExcelImport, setIsExcelImportModalOpen, setExcelData, setExcelFileName } = useDataContext();
+
 
   if (!isExcelImportModalOpen) return null;
 

@@ -857,9 +857,9 @@ export function useChat() {
             text: `➕ **Nueva Impresora Registrada:** Se ha guardado en Firestore el equipo **${newPrinter.modelo}** (S/N: ${idSerieUpper}) en el área **${newPrinter.area_actual}**.
             
 **Valores iniciales:**
-- Nivel de Tóner: ${tonerVal}% (Cambio est.: ${prediction.fecha_cambio_toner})
-- Unidad de Imagen: ${unitVal}% (Cambio est.: ${prediction.fecha_cambio_unidad})
-- Kit de Mantenimiento: ${maintVal}% (Cambio est.: ${prediction.fecha_cambio_mantenimiento})
+- Nivel de Tóner: ${tonerVal}% (Cambio est.: ${prediction.fecha_cambio_toner.toLocaleDateString('es-PE')})
+- Unidad de Imagen: ${unitVal}% (Cambio est.: ${prediction.fecha_cambio_unidad.toLocaleDateString('es-PE')})
+- Kit de Mantenimiento: ${maintVal}% (Cambio est.: ${prediction.fecha_cambio_mantenimiento.toLocaleDateString('es-PE')})
 - Estado: ${newPrinter.estado_funcionamiento}
 - Notas: "${newPrinter.observaciones}"\n\n*(Procesado con ${result._provider || "Chat AI"})*`,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -951,9 +951,9 @@ export function useChat() {
 **Valores:**
 - Modelo: ${newPrinter.modelo}
 - Área: ${newPrinter.area_actual}
-- Nivel de Tóner: ${tonerVal}% (Cambio est.: ${prediction.fecha_cambio_toner})
-- Unidad de Imagen: ${unitVal}% (Cambio est.: ${prediction.fecha_cambio_unidad})
-- Kit de Mantenimiento: ${maintVal}% (Cambio est.: ${prediction.fecha_cambio_mantenimiento})
+- Nivel de Tóner: ${tonerVal}% (Cambio est.: ${prediction.fecha_cambio_toner.toLocaleDateString('es-PE')})
+- Unidad de Imagen: ${unitVal}% (Cambio est.: ${prediction.fecha_cambio_unidad.toLocaleDateString('es-PE')})
+- Kit de Mantenimiento: ${maintVal}% (Cambio est.: ${prediction.fecha_cambio_mantenimiento.toLocaleDateString('es-PE')})
 - Estado: ${newPrinter.estado_funcionamiento}\n\n*(Procesado con ${result._provider || "Chat AI"})*`,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
           }

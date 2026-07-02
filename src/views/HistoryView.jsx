@@ -1,6 +1,10 @@
 import React from "react";
+import { useDataContext } from '../contexts/DataContext';
 
-export default function HistoryView({ loadingPrinters, generalHistory }) {
+
+export default function HistoryView() {
+  const { loadingPrinters, generalHistory } = useDataContext();
+
   return (
     <div className="space-y-4 animate-fade-in max-w-4xl mx-auto w-full">
       <h2 className="font-headline-md text-xl text-on-background font-bold">Historial de Lecturas</h2>

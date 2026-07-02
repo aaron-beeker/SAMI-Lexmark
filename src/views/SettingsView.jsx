@@ -1,10 +1,12 @@
 import React from "react";
+import { useAuthContext } from '../contexts/AuthContext';
+import { useUIContext } from '../contexts/UIContext';
 
-export default function SettingsView({
-  showSettingsSaved,
-  handleSaveApiKey,
-  isAuthenticated
-}) {
+
+export default function SettingsView() {
+  const { isAuthenticated } = useAuthContext();
+  const { showSettingsSaved, handleSaveApiKey } = useUIContext();
+
   return (
     <div className="space-y-5 animate-fade-in max-w-2xl mx-auto w-full">
       <h2 className="font-headline-md text-xl text-on-background font-bold">Ajustes del Sistema</h2>

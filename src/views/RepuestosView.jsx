@@ -1,14 +1,14 @@
 import React from "react";
 import ReplenishmentView from "./ReplenishmentView";
 import StockView from "./StockView";
+import { useAuthContext } from '../contexts/AuthContext';
+import { useDataContext } from '../contexts/DataContext';
 
-export default function RepuestosView({
-  printers,
-  repuestos,
-  handleDecrementStockClick,
-  updateManualStock,
-  isAuthenticated
-}) {
+
+export default function RepuestosView() {
+  const { isAuthenticated } = useAuthContext();
+  const { printers, repuestos, handleDecrementStockClick, updateManualStock } = useDataContext();
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-1.5 border-b border-outline-variant/60 pb-4">

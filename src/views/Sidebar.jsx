@@ -1,6 +1,19 @@
 import React from "react";
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuthContext } from '../contexts/AuthContext';
+import { useUIContext } from '../contexts/UIContext';
+import { useDataContext } from '../contexts/DataContext';
 
-export default function Sidebar({ currentTab, setCurrentTab, onOpenCreateModal, setFilterCriticidad, isAuthenticated }) {
+
+export default function Sidebar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const currentPath = location.pathname.replace('/', '') || 'dashboard';
+
+  const { isAuthenticated } = useAuthContext();
+  const { setFilterCriticidad } = useUIContext();
+  const { onOpenCreateModal } = useDataContext();
+
   const allTabs = [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
     { id: "inventario", label: "Inventario", icon: "inventory_2" },
@@ -31,9 +44,9 @@ export default function Sidebar({ currentTab, setCurrentTab, onOpenCreateModal, 
               if (tab.id === "dashboard" || tab.id === "inventario") {
                 if (setFilterCriticidad) setFilterCriticidad("all");
               }
-              setCurrentTab(tab.id);
+              navigate(`/${tab.id}`);
             }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-extrabold transition-all active:scale-98 ${currentTab === tab.id
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-extrabold transition-all active:scale-98 ${currentPath === tab.id
                 ? "bg-primary text-on-primary shadow-md"
                 : "text-on-surface-variant hover:bg-surface-container-high"
               }`}

@@ -1,6 +1,12 @@
 import React from "react";
+import { useAuthContext } from '../contexts/AuthContext';
+import { useDataContext } from '../contexts/DataContext';
 
-export default function StockView({ repuestos, handleDecrementStockClick, updateManualStock, isAuthenticated }) {
+
+export default function StockView() {
+  const { isAuthenticated } = useAuthContext();
+  const { repuestos, handleDecrementStockClick, updateManualStock } = useDataContext();
+
   const renderStockControls = (itemId, field, value, textColor = "") => {
     if (isAuthenticated) {
       return (

@@ -1,30 +1,10 @@
 import React from "react";
+import { useDataContext } from '../contexts/DataContext';
 
-export default function ChatView({
-  chatMessages,
-  isChatLoading,
-  chatInput,
-  setChatInput,
-  pendingAttachments,
-  removeAttachment,
-  handleChatPaste,
-  handleSendChatMessage,
-  fileInputRef,
-  pdfInputRef,
-  cameraInputRef,
-  excelFileInputRef,
-  chatEndRef,
-  chatTextareaRef,
-  handleImageChange,
-  handlePdfChange,
-  handleExcelUpload,
-  showReviewModal,
-  editableFields,
-  setEditableFields,
-  handleConfirmSend,
-  handleCancelSend,
-  printers = []
-}) {
+
+export default function ChatView() {
+  const { chatMessages, isChatLoading, chatInput, setChatInput, pendingAttachments, removeAttachment, handleChatPaste, handleSendChatMessage, fileInputRef, pdfInputRef, cameraInputRef, excelFileInputRef, chatEndRef, chatTextareaRef, handleImageChange, handlePdfChange, handleExcelUpload, showReviewModal, editableFields, setEditableFields, handleConfirmSend, handleCancelSend, printers } = useDataContext();
+
 
   return (
     <div className="space-y-4 flex flex-col h-[75vh] max-w-4xl mx-auto w-full animate-fade-in bg-surface-container border border-outline-variant rounded-3xl overflow-hidden shadow-sm">

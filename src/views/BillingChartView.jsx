@@ -1,6 +1,6 @@
 import React from "react";
-import {
-  LineChart,
+import { useDataContext } from '../contexts/DataContext';
+import {  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -10,7 +10,9 @@ import {
   ResponsiveContainer
 } from "recharts";
 
-export default function BillingChartView({ billingCycles, loadingBilling }) {
+export default function BillingChartView() {
+  const { billingCycles, loadingBilling } = useDataContext();
+
   if (loadingBilling) {
     return (
       <div className="bg-surface border border-outline-variant rounded-2xl shadow-sm p-8 text-center text-outline-variant animate-pulse">

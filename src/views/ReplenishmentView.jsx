@@ -1,6 +1,10 @@
 import React, { useState } from "react";
+import { useDataContext } from '../contexts/DataContext';
 
-export default function ReplenishmentView({ printers = [], repuestos = [] }) {
+
+export default function ReplenishmentView() {
+  const { printers, repuestos } = useDataContext();
+
   const [onlyShowWithLacks, setOnlyShowWithLacks] = useState(false);
 
   // Get all unique models from printers and stock

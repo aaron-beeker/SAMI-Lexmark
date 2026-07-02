@@ -1,30 +1,19 @@
 import React from "react";
+import { useNavigate, useLocation } from 'react-router-dom';
 import HospitalMapView from "./HospitalMapView";
 import BillingChartView from "./BillingChartView";
+import { useAuthContext } from '../contexts/AuthContext';
+import { useUIContext } from '../contexts/UIContext';
+import { useDataContext } from '../contexts/DataContext';
 
-export default function DashboardView({
-  printers,
-  loadingPrinters,
-  kpiTotal,
-  kpiOperativas,
-  kpiAdvertencias,
-  kpiInoperativas,
-  kpiHospitalTotal,
-  kpiHospitalEnServicio,
-  kpiHospitalEnSoporte,
-  kpiMurTotal,
-  kpiLexmarkTotal,
-  getPrinterStatus,
-  checkPrinterAlerts,
-  setCurrentTab,
-  setFilterCriticidad,
-  handleOpenEditModal,
-  isAuthenticated,
-  billingCycles,
-  loadingBilling,
-  closeMonth,
-  setSearchText
-}) {
+
+export default function DashboardView() {
+  const navigate = useNavigate();
+
+  const { isAuthenticated } = useAuthContext();
+  const { setFilterCriticidad } = useUIContext();
+  const { printers, loadingPrinters, kpiTotal, kpiOperativas, kpiAdvertencias, kpiInoperativas, kpiHospitalTotal, kpiHospitalEnServicio, kpiHospitalEnSoporte, kpiMurTotal, kpiLexmarkTotal, getPrinterStatus, checkPrinterAlerts, handleOpenEditModal, billingCycles, loadingBilling, closeMonth, setSearchText } = useDataContext();
+
   const totalHojas = printers.reduce((acc, p) => acc + (p.estadisticas?.hojas_impresas?.total || 0), 0);
   const totalCaras = printers.reduce((acc, p) => acc + (p.estadisticas?.caras_impresas?.total || 0), 0);
   const totalCarasCargadas = printers.reduce((acc, p) => acc + (p.estadisticas?.caras_cargadas?.total || 0), 0);
@@ -46,7 +35,7 @@ export default function DashboardView({
         <div
           onClick={() => {
             setFilterCriticidad("all");
-            setCurrentTab("inventario");
+            navigate("/inventario");
           }}
           className="p-5 bg-surface border border-outline-variant rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97] relative overflow-hidden group"
         >
@@ -64,7 +53,7 @@ export default function DashboardView({
           onClick={() => {
             setFilterCriticidad("En Servicio");
             setSearchText("");
-            setCurrentTab("inventario");
+            navigate("/inventario");
           }}
           className="p-5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
         >
@@ -78,7 +67,7 @@ export default function DashboardView({
         <div
           onClick={() => {
             setFilterCriticidad("Advertencia");
-            setCurrentTab("inventario");
+            navigate("/inventario");
           }}
           className="p-5 bg-blue-500/10 border border-blue-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
         >
@@ -93,7 +82,7 @@ export default function DashboardView({
           onClick={() => {
             setFilterCriticidad("all");
             setSearchText("Soporte");
-            setCurrentTab("inventario");
+            navigate("/inventario");
           }}
           className="p-5 bg-blue-500/10 border border-blue-500/20 rounded-2xl shadow-sm flex flex-col justify-between h-32 cursor-pointer hover:shadow-md transition-all active:scale-[0.97]"
         >
@@ -254,7 +243,7 @@ export default function DashboardView({
               <button
                 onClick={() => {
                   setFilterCriticidad("all");
-                  setCurrentTab("inventario");
+                  navigate("/inventario");
                 }}
                 className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
               >
@@ -392,7 +381,7 @@ export default function DashboardView({
           <div className="lg:col-span-4 space-y-6">
             {/* Quick Gemini Callout */}
             <section
-              onClick={() => setCurrentTab("chat")}
+              onClick={() => navigate("/chat")}
               className="p-5 bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-2xl shadow-md cursor-pointer hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-between"
             >
               <div className="space-y-1 flex-1 pr-4">

@@ -1,4 +1,7 @@
 import React, { useState } from "react";
+import { useAuthContext } from '../contexts/AuthContext';
+import { useDataContext } from '../contexts/DataContext';
+
 
 const FLOORS = {
   "Piso 1": {
@@ -110,7 +113,10 @@ const getDotPosition = (index, total, rx, ry, rw, rh) => {
   return { cx, cy };
 };
 
-export default function HospitalMapView({ printers, getPrinterStatus, checkPrinterAlerts, handleOpenEditModal, isAuthenticated }) {
+export default function HospitalMapView() {
+  const { isAuthenticated } = useAuthContext();
+  const { printers, getPrinterStatus, checkPrinterAlerts, handleOpenEditModal } = useDataContext();
+
   const [activeFloor, setActiveFloor] = useState("Piso 1");
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [selectedPrinterSn, setSelectedPrinterSn] = useState(null);

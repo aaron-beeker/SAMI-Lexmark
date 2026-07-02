@@ -1,6 +1,17 @@
 import React from "react";
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuthContext } from '../contexts/AuthContext';
+import { useUIContext } from '../contexts/UIContext';
 
-export default function TopAppBar({ currentTab, setCurrentTab, isAuthenticated, user, onLoginClick, onLogoutClick }) {
+
+export default function TopAppBar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const currentPath = location.pathname.replace('/', '') || 'dashboard';
+
+  const { isAuthenticated, user, onLoginClick, onLogoutClick } = useAuthContext();
+
+
   const getGreeting = () => {
     if (!user) return "";
     const name = user.displayName;
@@ -30,7 +41,7 @@ export default function TopAppBar({ currentTab, setCurrentTab, isAuthenticated, 
     <header className="shrink-0 flex justify-between items-center px-6 h-16 bg-surface/90 backdrop-blur-md border-b border-outline-variant shadow-sm z-30">
       <div 
         className="flex items-center gap-2 cursor-pointer active:opacity-70" 
-        onClick={() => setCurrentTab("dashboard")}
+        onClick={() => navigate("/dashboard")}
       >
         <img 
           src="/mur_tecnologa_logo.jpg" 
@@ -72,9 +83,9 @@ export default function TopAppBar({ currentTab, setCurrentTab, isAuthenticated, 
         )}
 
         <button
-          onClick={() => setCurrentTab("settings")}
+          onClick={() => navigate("/settings")}
           className={`w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors ${
-            currentTab === "settings" ? "bg-primary-fixed text-primary" : "text-on-surface-variant"
+            currentPath === "settings" ? "bg-primary-fixed text-primary" : "text-on-surface-variant"
           }`}
           title="Configuración"
         >

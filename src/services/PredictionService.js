@@ -10,9 +10,9 @@
 export const linearPredictionStrategy = (tonerNivel, unidadNivel, mantenimientoNivel) => {
   const hoy = new Date();
   
-  const diasToner = Math.round(((tonerNivel ?? 100) / 100) * 30);
-  const diasUnidad = Math.round(((unidadNivel ?? 100) / 100) * 30);
-  const diasMantenimiento = Math.round(((mantenimientoNivel ?? 100) / 100) * 30);
+  const diasToner = Math.round(((tonerNivel ?? 100) / 100) * 45);
+  const diasUnidad = Math.round(((unidadNivel ?? 100) / 100) * 45);
+  const diasMantenimiento = Math.round(((mantenimientoNivel ?? 100) / 100) * 45);
 
   const fechaToner = new Date();
   fechaToner.setDate(hoy.getDate() + diasToner);
@@ -25,11 +25,11 @@ export const linearPredictionStrategy = (tonerNivel, unidadNivel, mantenimientoN
 
   return {
     dias_restantes_toner: diasToner,
-    fecha_cambio_toner: fechaToner.toLocaleDateString('es-PE'),
+    fecha_cambio_toner: fechaToner,
     dias_restantes_unidad: diasUnidad,
-    fecha_cambio_unidad: fechaUnidad.toLocaleDateString('es-PE'),
+    fecha_cambio_unidad: fechaUnidad,
     dias_restantes_mantenimiento: diasMantenimiento,
-    fecha_cambio_mantenimiento: fechaMantenimiento.toLocaleDateString('es-PE')
+    fecha_cambio_mantenimiento: fechaMantenimiento
   };
 };
 
@@ -48,7 +48,7 @@ export function calcularFechasPredictivas(tonerNivel, unidadNivel, mantenimiento
 }
 
 /**
- * Calculates the dynamic decreased level of a consumable based on a 30-day cycle (100% = 30 days)
+ * Calculates the dynamic decreased level of a consumable based on a 45-day cycle (100% = 45 days)
  * @param {number} nivelActual - The saved percentage level
  * @param {Date|Timestamp} ultimaLectura - The date when the level was last saved
  * @returns {number|null} The calculated current level based on days passed
@@ -70,7 +70,7 @@ export function calcularNivelConsumible(nivelActual, ultimaLectura) {
 
   if (diffDays <= 0) return nivelActual;
 
-  const consumoDiario = 100 / 30; // 3.333% decrease per day
+  const consumoDiario = 100 / 45; // 2.22% decrease per day
   let nuevoNivel = nivelActual - (diffDays * consumoDiario);
   
   if (nuevoNivel < 0) nuevoNivel = 0;

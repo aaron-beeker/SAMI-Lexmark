@@ -1,14 +1,10 @@
 import React from "react";
+import { useDataContext } from '../contexts/DataContext';
 
-export default function StockModal({
-  stockModal,
-  setStockModal,
-  stockTargetPrinterId,
-  setStockTargetPrinterId,
-  savingStock,
-  handleConfirmStockReduction,
-  printers
-}) {
+
+export default function StockModal() {
+  const { stockModal, setStockModal, stockTargetPrinterId, setStockTargetPrinterId, savingStock, handleConfirmStockReduction, printers } = useDataContext();
+
 
   if (!stockModal.isOpen) return null;
 
