@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { useDataContext } from '../contexts/DataContext';
-
+import { useUIContext } from '../contexts/UIContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function ReplenishmentView() {
-  const { printers, repuestos } = useDataContext();
+  const { printers, repuestos, setSearchText } = useDataContext();
+  const { setFilterCriticidad } = useUIContext();
+  const navigate = useNavigate();
 
   const [onlyShowWithLacks, setOnlyShowWithLacks] = useState(false);
 
@@ -232,9 +235,26 @@ export default function ReplenishmentView() {
                         </div>
 
                         {/* Needed (Bajo en Equipos) */}
-                        <span className="col-span-2 text-center font-medium text-on-surface-variant">
-                          {row.data.needed}
-                        </span>
+                        <div className="col-span-2 text-center font-medium">
+                          {row.data.needed > 0 ? (
+                            <button
+                              onClick={() => {
+                                let typeKey = "toner";
+                                if (row.name === "Kit Mant.") typeKey = "maint";
+                                if (row.name === "Unid. Imagen") typeKey = "unit";
+                                setFilterCriticidad("all");
+                                setSearchText(`low:${typeKey}:${item.model}`);
+                                navigate("/inventario");
+                              }}
+                              className="text-primary hover:underline hover:bg-primary/5 px-2 py-0.5 rounded transition-colors active:scale-95"
+                              title={`Ver las ${row.data.needed} impresoras`}
+                            >
+                              {row.data.needed}
+                            </button>
+                          ) : (
+                            <span className="text-on-surface-variant">{row.data.needed}</span>
+                          )}
+                        </div>
 
                         {/* Stock available */}
                         <span className="col-span-2 text-center font-medium text-on-surface-variant">

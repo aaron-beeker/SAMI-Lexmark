@@ -973,6 +973,21 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       const raw = searchText.trim();
       if (!raw) return true;
 
+      // Special hidden command for filtering low stock from replenishment view
+      if (raw.toLowerCase().startsWith("low:")) {
+        const parts = raw.split(":");
+        if (parts.length >= 3) {
+          const type = parts[1].toLowerCase();
+          const model = parts.slice(2).join(":").toUpperCase();
+          
+          if (p.modelo !== model) return false;
+          
+          if (type === "toner") return p.consumibles?.toner_nivel !== undefined && p.consumibles.toner_nivel !== null && p.consumibles.toner_nivel <= 15;
+          if (type === "maint") return p.consumibles?.mantenimiento_kit_nivel !== undefined && p.consumibles.mantenimiento_kit_nivel !== null && p.consumibles.mantenimiento_kit_nivel <= 15;
+          if (type === "unit") return p.consumibles?.unidad_imagen_nivel !== undefined && p.consumibles.unidad_imagen_nivel !== null && p.consumibles.unidad_imagen_nivel <= 15;
+        }
+      }
+
       const groups = raw
         .split(/\s*&\s*/i)
         .map((s) => s.trim())

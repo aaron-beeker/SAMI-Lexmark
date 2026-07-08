@@ -15,7 +15,36 @@ export default function PrinterModal() {
   const [isEditing, setIsEditing] = React.useState(false);
   const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editGarantia, setEditGarantia, editEstadisticas, setEditEstadisticas, editFuncionamiento, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
 
+  const [calcValues, setCalcValues] = React.useState({
+    toner: { cap: '31000', caras: '' },
+    mant: { cap: '200000', caras: '' },
+    unit: { cap: '75000', caras: '' }
+  });
 
+  const handleCalcChange = (type, field, value) => {
+    const updated = {
+      ...calcValues,
+      [type]: {
+        ...calcValues[type],
+        [field]: value
+      }
+    };
+    setCalcValues(updated);
+    
+    const cap = Number(updated[type].cap);
+    const caras = Number(updated[type].caras);
+    
+    if (cap > 0 && caras >= 0) {
+      const remaining = cap - caras;
+      const percentage = Math.max(0, Math.min(100, Math.round((remaining / cap) * 100)));
+      
+      if (type === 'toner') setEditToner(percentage);
+      if (type === 'mant') setEditMantenimiento(percentage);
+      if (type === 'unit') setEditUnit(percentage);
+    }
+  };
+
+  const isUsbOrOffline = !editIp || editIp.trim().toLowerCase() === "usb";
 
   React.useEffect(() => {
     setIsEditing(isCreateMode);
@@ -167,7 +196,7 @@ export default function PrinterModal() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider">% Tóner</label>
               <div className="relative">
@@ -183,6 +212,15 @@ export default function PrinterModal() {
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
+              {isUsbOrOffline && isEditing && isAuthenticated && (
+                <div className="mt-2 bg-surface-variant/30 p-2 rounded-lg border border-outline-variant/30 space-y-1">
+                  <span className="text-[8px] font-bold text-primary uppercase block">Cálculo Exacto</span>
+                  <div className="flex gap-1.5">
+                    <input type="number" min="0" placeholder="Capacidad" value={calcValues.toner.cap} onChange={(e) => handleCalcChange('toner', 'cap', e.target.value)} className="w-1/2 bg-surface text-[9px] p-1.5 border border-outline-variant rounded focus:ring-primary focus:border-primary" />
+                    <input type="number" min="0" placeholder="Caras por Cons." value={calcValues.toner.caras} onChange={(e) => handleCalcChange('toner', 'caras', e.target.value)} className="w-1/2 bg-surface text-[9px] p-1.5 border border-outline-variant rounded focus:ring-primary focus:border-primary" />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -200,6 +238,15 @@ export default function PrinterModal() {
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
+              {isUsbOrOffline && isEditing && isAuthenticated && (
+                <div className="mt-2 bg-surface-variant/30 p-2 rounded-lg border border-outline-variant/30 space-y-1">
+                  <span className="text-[8px] font-bold text-primary uppercase block">Cálculo Exacto</span>
+                  <div className="flex gap-1.5">
+                    <input type="number" min="0" placeholder="Capacidad" value={calcValues.mant.cap} onChange={(e) => handleCalcChange('mant', 'cap', e.target.value)} className="w-1/2 bg-surface text-[9px] p-1.5 border border-outline-variant rounded focus:ring-primary focus:border-primary" />
+                    <input type="number" min="0" placeholder="Caras por Cons." value={calcValues.mant.caras} onChange={(e) => handleCalcChange('mant', 'caras', e.target.value)} className="w-1/2 bg-surface text-[9px] p-1.5 border border-outline-variant rounded focus:ring-primary focus:border-primary" />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -217,6 +264,15 @@ export default function PrinterModal() {
                 />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-outline font-bold text-[10px]">%</span>
               </div>
+              {isUsbOrOffline && isEditing && isAuthenticated && (
+                <div className="mt-2 bg-surface-variant/30 p-2 rounded-lg border border-outline-variant/30 space-y-1">
+                  <span className="text-[8px] font-bold text-primary uppercase block">Cálculo Exacto</span>
+                  <div className="flex gap-1.5">
+                    <input type="number" min="0" placeholder="Capacidad" value={calcValues.unit.cap} onChange={(e) => handleCalcChange('unit', 'cap', e.target.value)} className="w-1/2 bg-surface text-[9px] p-1.5 border border-outline-variant rounded focus:ring-primary focus:border-primary" />
+                    <input type="number" min="0" placeholder="Caras por Cons." value={calcValues.unit.caras} onChange={(e) => handleCalcChange('unit', 'caras', e.target.value)} className="w-1/2 bg-surface text-[9px] p-1.5 border border-outline-variant rounded focus:ring-primary focus:border-primary" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
