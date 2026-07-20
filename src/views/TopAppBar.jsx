@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { useUIContext } from '../contexts/UIContext';
+import { db } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 
 export default function TopAppBar() {
@@ -11,6 +13,48 @@ export default function TopAppBar() {
 
   const { isAuthenticated, user, onLoginClick, onLogoutClick } = useAuthContext();
 
+  const [lastHeartbeatTime, setLastHeartbeatTime] = useState(Date.now());
+  const [workerState, setWorkerState] = useState("Corriendo");
+  const [pcName, setPcName] = useState("");
+  const [isMonitorOnline, setIsMonitorOnline] = useState(true);
+
+  useEffect(() => {
+    const workerDoc = doc(db, "artifacts", "sami-lexmark", "public", "data", "sistema", "worker");
+    const unsubscribe = onSnapshot(workerDoc, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.estado) {
+          setWorkerState(data.estado);
+        }
+        if (data.pc_name) {
+          setPcName(data.pc_name);
+        }
+        if (data.ultimo_latido) {
+          const t = data.ultimo_latido.toDate ? data.ultimo_latido.toDate().getTime() : new Date(data.ultimo_latido).getTime();
+          setLastHeartbeatTime(t);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const checkStatus = () => {
+      const now = Date.now();
+      const diffMinutes = (now - lastHeartbeatTime) / (1000 * 60);
+      
+      // Si el estado es "Detenido", está offline inmediatamente.
+      // Si es "Corriendo" o "Iniciando", verificamos por seguridad que el latido no sea más viejo que 3 minutos.
+      if (workerState === "Detenido") {
+        setIsMonitorOnline(false);
+      } else {
+        setIsMonitorOnline(diffMinutes <= 3);
+      }
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, [lastHeartbeatTime, workerState]);
 
   const getGreeting = () => {
     if (!user) return "";
@@ -53,10 +97,17 @@ export default function TopAppBar() {
       </div>
 
       <div className="flex items-center gap-2.5">
-        <div className="hidden sm:flex items-center gap-1.5 text-primary bg-primary-fixed/50 px-2.5 py-1 rounded-full border border-primary/15">
-          <span className="material-symbols-outlined text-sm animate-pulse-subtle">cloud_done</span>
-          <span className="text-[10px] font-bold uppercase tracking-wider">Online</span>
-        </div>
+        {isMonitorOnline ? (
+          <div className="flex items-center gap-1.5 text-primary bg-primary-fixed/50 px-2.5 py-1 rounded-full border border-primary/15" title={`Monitor Worker Online en ${pcName}`}>
+            <span className="material-symbols-outlined text-sm animate-pulse-subtle">cloud_done</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">{workerState} {pcName ? `- ${pcName}` : ''}</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-error bg-error/10 px-2.5 py-1 rounded-full border border-error/20" title="Alerta: El sistema de monitoreo está apagado o fallando">
+            <span className="material-symbols-outlined text-sm">cloud_off</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Desconectado {pcName ? `- ${pcName}` : ''}</span>
+          </div>
+        )}
 
         {isAuthenticated ? (
           <div className="flex items-center gap-2 bg-surface-container-high pl-3 pr-1 py-1 rounded-full border border-outline-variant/60 shadow-sm">

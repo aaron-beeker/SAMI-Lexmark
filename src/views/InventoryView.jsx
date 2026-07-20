@@ -149,7 +149,9 @@ export default function InventoryView() {
                       const maint  = printer.consumibles?.mantenimiento_kit_nivel ?? null;
                       const status = getPrinterStatus(printer);
                       const hasAlerts = checkPrinterAlerts(printer);
-                      const isDisconnected = printer.estado_funcionamiento?.toLowerCase().includes("conexion") || printer.estado_funcionamiento?.toLowerCase().includes("conexión");
+                      // Hacemos la comprobación ignorando mayúsculas/minúsculas y espacios en blanco por si acaso
+                      const rawEstado = printer.estado_conexion || "";
+                      const isDisconnected = rawEstado.toString().trim().toLowerCase() !== "exitosa";
                       
                       const statusColor = status === "En Mantenimiento"
                         ? { badge: "bg-blue-500/10 text-blue-700 border-blue-500/20", icon: "build" }
@@ -190,7 +192,7 @@ export default function InventoryView() {
                                   ) : (
                                     <span className="text-outline font-mono font-semibold flex items-center gap-1">
                                       <span className={`w-1.5 h-1.5 rounded-full ${isDisconnected ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
-                                      {printer.ip}
+                                      {printer.ip} <span className="text-[9px] opacity-50 ml-1">({printer.estado_conexion || 'vacio'})</span>
                                     </span>
                                   )
                                 ) : (
