@@ -5,7 +5,7 @@ import { useDataContext } from '../contexts/DataContext';
 
 export default function StockView() {
   const { isAuthenticated } = useAuthContext();
-  const { repuestos, handleDecrementStockClick, updateManualStock } = useDataContext();
+  const { repuestos, updateManualStock } = useDataContext();
 
   const renderStockControls = (itemId, field, value, textColor = "") => {
     if (isAuthenticated) {
@@ -13,7 +13,7 @@ export default function StockView() {
         <div className="flex items-center gap-1 bg-surface rounded p-0.5 shadow-sm border border-outline-variant/20">
           <button
             type="button"
-            onClick={() => handleDecrementStockClick(itemId, field, value || 0)}
+            onClick={() => updateManualStock(itemId, field, (value || 0) - 1)}
             className="w-5 h-5 flex items-center justify-center bg-surface-container-lowest rounded-sm text-on-surface hover:bg-outline-variant/30 font-black active:scale-90 transition-all"
           >-</button>
           <span className={`font-black min-w-[14px] text-center text-xs ${textColor}`}>{value ?? 0}</span>

@@ -16,9 +16,9 @@ export default function PrinterModal() {
   const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editGarantia, setEditGarantia, editEstadisticas, setEditEstadisticas, editFuncionamiento, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
 
   const [calcValues, setCalcValues] = React.useState({
-    toner: { cap: '31000', caras: '' },
-    mant: { cap: '200000', caras: '' },
-    unit: { cap: '75000', caras: '' }
+    toner: { cap: '20000', caras: '' },
+    mant: { cap: '100000', caras: '' },
+    unit: { cap: '40000', caras: '' }
   });
 
   const handleCalcChange = (type, field, value) => {
@@ -32,9 +32,9 @@ export default function PrinterModal() {
     setCalcValues(updated);
     
     const cap = Number(updated[type].cap);
-    const caras = Number(updated[type].caras);
     
-    if (cap > 0 && caras >= 0) {
+    if (cap > 0 && updated[type].caras !== '') {
+      const caras = Number(updated[type].caras);
       const remaining = cap - caras;
       const percentage = Math.max(0, Math.min(100, Math.round((remaining / cap) * 100)));
       
@@ -48,6 +48,24 @@ export default function PrinterModal() {
 
   React.useEffect(() => {
     setIsEditing(isCreateMode);
+    
+    if (!isCreateMode && selectedPrinter) {
+      const toner = selectedPrinter.consumibles?.toner_nivel ?? 100;
+      const mant = selectedPrinter.consumibles?.mantenimiento_kit_nivel ?? 100;
+      const unit = selectedPrinter.consumibles?.unidad_imagen_nivel ?? 100;
+      
+      setCalcValues({
+        toner: { cap: '20000', caras: String(Math.round(20000 - (toner * 20000 / 100))) },
+        mant: { cap: '100000', caras: String(Math.round(100000 - (mant * 100000 / 100))) },
+        unit: { cap: '40000', caras: String(Math.round(40000 - (unit * 40000 / 100))) }
+      });
+    } else {
+      setCalcValues({
+        toner: { cap: '20000', caras: '' },
+        mant: { cap: '100000', caras: '' },
+        unit: { cap: '40000', caras: '' }
+      });
+    }
   }, [isCreateMode, selectedPrinter]);
 
   return (

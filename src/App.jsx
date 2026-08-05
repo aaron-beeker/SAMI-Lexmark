@@ -12,7 +12,7 @@ import ChatView from "./views/ChatView";
 import HistoryView from "./views/HistoryView";
 import SettingsView from "./views/SettingsView";
 import PrinterModal from "./views/PrinterModal";
-import StockModal from "./views/StockModal";
+
 import ExcelImportModal from "./views/ExcelImportModal";
 import LoginModal from "./views/LoginModal";
 import UsersView from "./views/UsersView";
@@ -22,7 +22,7 @@ export default function App() {
   const { isAuthLoading, isAuthenticated, loginWithGoogle, loginError, setLoginError } = useAuthContext();
   const { setFilterCriticidad } = useUIContext();
   const data = useDataContext(); // Solo usamos los estados requeridos para modales globales
-  const { isModalOpen, selectedPrinter, isCreateMode, stockModal, isExcelImportModalOpen } = data;
+  const { isModalOpen, selectedPrinter, isCreateMode, isExcelImportModalOpen } = data;
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -116,9 +116,7 @@ export default function App() {
         <PrinterModal />
       )}
 
-      {stockModal && (
-        <StockModal />
-      )}
+
 
       {isExcelImportModalOpen && (
         <ExcelImportModal />

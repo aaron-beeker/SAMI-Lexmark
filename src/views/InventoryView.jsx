@@ -9,7 +9,7 @@ export default function InventoryView() {
   const { 
     searchText, setSearchText, 
     filteredPrinters, loadingPrinters, 
-    handleDownloadReport, handleOpenCreateModal, 
+    handleDownloadReport, handleDownloadPDF, handleOpenCreateModal, 
     copiedSerialId, handleCopySerial, 
     handleOpenEditModal, getPrinterStatus, checkPrinterAlerts, 
     currentPage, setCurrentPage, totalPages, paginatedPrinters 
@@ -47,7 +47,16 @@ export default function InventoryView() {
             title="Descargar Excel"
           >
             <span className="material-symbols-outlined text-lg">download</span>
-            <span>Exportar</span>
+            <span>Exportar Excel</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-[#e74c3c] text-white rounded-xl font-bold text-sm hover:bg-[#c0392b] transition-all shadow-sm shadow-[#e74c3c]/20 active:scale-95"
+            title="Descargar PDF"
+          >
+            <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
+            <span>Exportar PDF</span>
           </button>
           {isAuthenticated && (
             <button

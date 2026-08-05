@@ -108,17 +108,7 @@ export const DataProvider = ({ children }) => {
     };
   }, []);
 
-  // Wires up and delegates actions that require cross-hook orchestration
-  const handleConfirmStockReduction = () => {
-    return stock.handleConfirmStockReduction(
-      db,
-      printers.printers,
-      updatePrinter,
-      addPrinterHistory,
-      generalHistory.addGeneralHistoryLog,
-      printers.calculatePrinterStatus
-    );
-  };
+
 
   const handleConfirmExcelImport = () => {
     return excelImport.handleConfirmExcelImport(
@@ -181,8 +171,6 @@ export const DataProvider = ({ children }) => {
     stockTargetPrinterId: stock.stockTargetPrinterId,
     setStockTargetPrinterId: stock.setStockTargetPrinterId,
     updateManualStock: updateManualStockWrapper,
-    handleDecrementStockClick: stock.handleDecrementStockClick,
-    handleConfirmStockReduction: handleConfirmStockReduction,
 
     // Chat
     chatMessages: chat.chatMessages,

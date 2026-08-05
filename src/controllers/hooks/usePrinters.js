@@ -728,44 +728,156 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       const yy = String(today.getFullYear()).slice(-2);
       const dateStr = `${dd}/${mm}/${yy}`;
 
-      const areaHeader = `AREA ACTUAL ${dateStr}`;
+      const areaHeader = `AREA ACTUAL`;
 
+      // 1. Sort for detailed sheet
       const sortedPrinters = [...printers].sort((a, b) => {
+        const modelA = (a.modelo || "MX431ADN").trim();
+        const modelB = (b.modelo || "MX431ADN").trim();
+        const modelCmp = modelA.localeCompare(modelB, "es", { sensitivity: "base" });
+        if (modelCmp !== 0) return modelCmp;
+        
         const aInop = isPrinterInoperative(a);
         const bInop = isPrinterInoperative(b);
+        if (aInop && !bInop) return -1;
+        if (!aInop && bInop) return 1;
 
-        if (aInop && !bInop) return 1;
-        if (!aInop && bInop) return -1;
+        const aAlert = checkPrinterAlerts(a);
+        const bAlert = checkPrinterAlerts(b);
+        if (aAlert && !bAlert) return -1;
+        if (!aAlert && bAlert) return 1;
 
         const areaA = (a.area_actual || "").trim();
         const areaB = (b.area_actual || "").trim();
         return areaA.localeCompare(areaB, "es", { sensitivity: "base" });
       });
 
-      const reportRows = sortedPrinters.map((p, idx) => ({
-        "N°": idx + 1,
-        "IMPRESORA/MODELO": p.modelo || "MX431ADN",
-        [areaHeader]: p.area_actual || "Soporte",
-        SERIE: p.id_serie,
-        OBS: p.observaciones || "",
-        CASO: p.codigo_caso_cas || ""
-      }));
+      const reportRows = sortedPrinters.map((p, idx) => {
+        const inop = isPrinterInoperative(p);
+        const alert = checkPrinterAlerts(p);
+        const estado = inop ? "🚨 MANTENIMIENTO" : (alert ? "⚠️ ALERTA" : "✅ OPERATIVO");
+        return {
+          "N°": idx + 1,
+          "🖨️ MODELO": p.modelo || "MX431ADN",
+          "📌 SERIE": p.id_serie,
+          [areaHeader]: p.area_actual || "Soporte",
+          "📊 ESTADO": estado,
+          "⚫ TÓNER (%)": p.consumibles?.toner_nivel ?? "-",
+          "🔧 KIT (%)": p.consumibles?.mantenimiento_kit_nivel ?? "-",
+          "🖼️ U. IMAGEN (%)": p.consumibles?.unidad_imagen_nivel ?? "-",
+          "📝 CASO CAS": p.codigo_caso_cas || "",
+          "🔍 OBSERVACIONES": p.observaciones || ""
+        };
+      });
+
+      // 2. Summary Sheet (Strategic)
+      const strategicRows = [];
+      const models = [...new Set(printers.map(p => p.modelo || "MX431ADN"))].sort();
+      
+      let granTotalToner = 0;
+      let granTotalKit = 0;
+      let granTotalUnidad = 0;
+
+      models.forEach(modelo => {
+        const modelPrinters = printers.filter(p => (p.modelo || "MX431ADN") === modelo);
+        let operativos = 0;
+        let alertas = 0;
+        let mantenimiento = 0;
+        let reqToner = 0;
+        let reqKit = 0;
+        let reqUnidad = 0;
+        const areasCount = {};
+        
+        modelPrinters.forEach(p => {
+           const inop = isPrinterInoperative(p);
+           const alert = checkPrinterAlerts(p);
+           if (inop) mantenimiento++;
+           else if (alert) alertas++;
+           else operativos++;
+           
+           const toner = p.consumibles?.toner_nivel ?? 100;
+           const kit = p.consumibles?.mantenimiento_kit_nivel ?? 100;
+           const unidad = p.consumibles?.unidad_imagen_nivel ?? 100;
+           
+           if (toner <= 15) reqToner++;
+           if (kit <= 15) reqKit++;
+           if (unidad <= 15) reqUnidad++;
+           
+           const area = p.area_actual || "Sin Asignar";
+           areasCount[area] = (areasCount[area] || 0) + 1;
+        });
+        
+        granTotalToner += reqToner;
+        granTotalKit += reqKit;
+        granTotalUnidad += reqUnidad;
+        
+        const topAreas = Object.entries(areasCount)
+          .sort((a,b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(e => `${e[0]} (${e[1]})`)
+          .join(", ");
+          
+        strategicRows.push({
+          "🖨️ MODELO": modelo,
+          "📊 TOTAL EQUIPOS": modelPrinters.length,
+          "✅ OPERATIVOS": operativos,
+          "⚠️ CON ALERTAS": alertas,
+          "🚨 EN MANTENIMIENTO": mantenimiento,
+          "🛒 COMPRAR TÓNER": reqToner > 0 ? `${reqToner} und.` : "-",
+          "🛒 COMPRAR KIT MANT.": reqKit > 0 ? `${reqKit} und.` : "-",
+          "🛒 COMPRAR U. IMAGEN": reqUnidad > 0 ? `${reqUnidad} und.` : "-",
+          "📍 TOP 3 ÁREAS": topAreas
+        });
+      });
+
+      // Agregar fila de totales para compras
+      strategicRows.push({});
+      strategicRows.push({
+          "🖨️ MODELO": "TOTAL COMPRA SUGERIDA:",
+          "📊 TOTAL EQUIPOS": "",
+          "✅ OPERATIVOS": "",
+          "⚠️ CON ALERTAS": "",
+          "🚨 EN MANTENIMIENTO": "",
+          "🛒 COMPRAR TÓNER": granTotalToner > 0 ? `${granTotalToner} und.` : "-",
+          "🛒 COMPRAR KIT MANT.": granTotalKit > 0 ? `${granTotalKit} und.` : "-",
+          "🛒 COMPRAR U. IMAGEN": granTotalUnidad > 0 ? `${granTotalUnidad} und.` : "-",
+          "📍 TOP 3 ÁREAS": ""
+      });
 
       const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(reportRows);
-
-      const colWidths = [
-        { wch: 6 }, // N°
-        { wch: 20 }, // IMPRESORA / MODELO
-        { wch: 35 }, // AREA ACTUAL
-        { wch: 18 }, // SERIE
-        { wch: 55 }, // OBS
-        { wch: 25 } // CASO
+      
+      // Sheet 1: Detalles
+      const wsDetails = XLSX.utils.json_to_sheet(reportRows);
+      wsDetails["!cols"] = [
+        { wch: 5 },  // N°
+        { wch: 20 }, // MODELO
+        { wch: 20 }, // SERIE
+        { wch: 30 }, // AREA
+        { wch: 20 }, // ESTADO
+        { wch: 15 }, // TONER
+        { wch: 15 }, // KIT
+        { wch: 18 }, // U. IMAGEN
+        { wch: 20 }, // CASO CAS
+        { wch: 50 }  // OBSERVACIONES
       ];
-      ws["!cols"] = colWidths;
+      XLSX.utils.book_append_sheet(wb, wsDetails, "Inventario Detallado");
 
-      XLSX.utils.book_append_sheet(wb, ws, "TI HNCH");
-      XLSX.writeFile(wb, `IMPRESORAS_ALQUILADAS_${dateStr.replace(/\//g, "-")}.xlsx`);
+      // Sheet 2: Estrategico
+      const wsStrategic = XLSX.utils.json_to_sheet(strategicRows);
+      wsStrategic["!cols"] = [
+        { wch: 25 }, // MODELO
+        { wch: 18 }, // TOTAL
+        { wch: 15 }, // OPERATIVOS
+        { wch: 18 }, // ALERTAS
+        { wch: 22 }, // MANTENIMIENTO
+        { wch: 22 }, // COMPRAR TONER
+        { wch: 25 }, // COMPRAR KIT
+        { wch: 25 }, // COMPRAR UNIDAD
+        { wch: 40 }  // AREAS
+      ];
+      XLSX.utils.book_append_sheet(wb, wsStrategic, "Resumen Estratégico");
+
+      XLSX.writeFile(wb, `INFORME_ESTRATEGICO_${dateStr.replace(/\//g, "-")}.xlsx`);
     } catch (error) {
       console.error("Error generating Excel report:", error);
       alert("Error al descargar el reporte Excel: " + error.message);
@@ -1109,6 +1221,16 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
+
+  const handleDownloadPDF = async () => {
+    try {
+      const module = await import("../../utils/pdfGenerator");
+      module.generatePDFReport(printers, checkPrinterAlerts, isPrinterInoperative);
+    } catch (err) {
+      console.error("Error generating PDF:", err);
+      alert("Hubo un error al generar el PDF: " + err.message);
+    }
+  };
 
   return {
     printers,

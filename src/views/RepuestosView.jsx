@@ -7,7 +7,7 @@ import { useDataContext } from '../contexts/DataContext';
 
 export default function RepuestosView() {
   const { isAuthenticated } = useAuthContext();
-  const { printers, repuestos, handleDecrementStockClick, updateManualStock } = useDataContext();
+  const { printers, repuestos, updateManualStock } = useDataContext();
 
   return (
     <div className="space-y-8 animate-fade-in pb-10">
@@ -25,7 +25,6 @@ export default function RepuestosView() {
         <div className="xl:col-span-6 space-y-6">
           <StockView
             repuestos={repuestos}
-            handleDecrementStockClick={handleDecrementStockClick}
             updateManualStock={updateManualStock}
             isAuthenticated={isAuthenticated}
           />
