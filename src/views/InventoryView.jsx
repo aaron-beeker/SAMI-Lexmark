@@ -39,32 +39,34 @@ export default function InventoryView() {
           <h2 className="font-headline-md text-2xl text-on-background font-black tracking-tight">Inventario</h2>
           <p className="text-sm text-outline font-medium mt-1">Gestiona el estado y consumibles de tus equipos</p>
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="grid grid-cols-2 md:flex items-center gap-2 md:gap-3 w-full md:w-auto">
           <button
             type="button"
             onClick={handleDownloadReport}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-surface-container-high text-on-surface-variant rounded-xl font-bold text-sm hover:bg-outline-variant/30 transition-all shadow-sm border border-outline-variant active:scale-95"
+            className="w-full md:w-auto flex items-center justify-center gap-1.5 md:gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-surface-container-high text-on-surface-variant rounded-xl font-bold text-xs md:text-sm hover:bg-outline-variant/30 transition-all shadow-sm border border-outline-variant active:scale-95"
             title="Descargar Excel"
           >
-            <span className="material-symbols-outlined text-lg">download</span>
-            <span>Exportar Excel</span>
+            <span className="material-symbols-outlined text-base md:text-lg">download</span>
+            <span className="hidden sm:inline md:hidden lg:inline">Exportar Excel</span>
+            <span className="sm:hidden md:inline lg:hidden">Excel</span>
           </button>
           <button
             type="button"
             onClick={handleDownloadPDF}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-[#e74c3c] text-white rounded-xl font-bold text-sm hover:bg-[#c0392b] transition-all shadow-sm shadow-[#e74c3c]/20 active:scale-95"
+            className="w-full md:w-auto flex items-center justify-center gap-1.5 md:gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-[#e74c3c] text-white rounded-xl font-bold text-xs md:text-sm hover:bg-[#c0392b] transition-all shadow-sm shadow-[#e74c3c]/20 active:scale-95"
             title="Descargar PDF"
           >
-            <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
-            <span>Exportar PDF</span>
+            <span className="material-symbols-outlined text-base md:text-lg">picture_as_pdf</span>
+            <span className="hidden sm:inline md:hidden lg:inline">Exportar PDF</span>
+            <span className="sm:hidden md:inline lg:hidden">PDF</span>
           </button>
           {isAuthenticated && (
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-sm hover:bg-primary-container transition-all shadow-sm shadow-primary/20 active:scale-95"
+              className="col-span-2 md:col-span-1 w-full md:w-auto flex items-center justify-center gap-1.5 md:gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-primary text-on-primary rounded-xl font-bold text-xs md:text-sm hover:bg-primary-container transition-all shadow-sm shadow-primary/20 active:scale-95"
             >
-              <span className="material-symbols-outlined text-lg">add</span>
+              <span className="material-symbols-outlined text-base md:text-lg">add</span>
               <span>Nueva Impresora</span>
             </button>
           )}
@@ -162,6 +164,22 @@ export default function InventoryView() {
                       const rawEstado = printer.estado_conexion || "";
                       const isDisconnected = rawEstado.toString().trim().toLowerCase() !== "exitosa";
                       
+                      const areaActual = printer.area_actual || "";
+                      const ubicacion = printer.ubicacion_entidad || "Hospital";
+                      let displayLocation = areaActual || "Sin asignar";
+                      if (ubicacion.toUpperCase() !== "HOSPITAL") {
+                        const isInvalidArea = !areaActual || 
+                                              areaActual.toLowerCase().includes("soporte") || 
+                                              areaActual.toLowerCase().includes("sin asignar") || 
+                                              /^[-_\s]+$/.test(areaActual);
+                        
+                        if (isInvalidArea) {
+                          displayLocation = ubicacion;
+                        } else {
+                          displayLocation = `${ubicacion} - ${areaActual.trim()}`;
+                        }
+                      }
+
                       const statusColor = status === "En Mantenimiento"
                         ? { badge: "bg-blue-500/10 text-blue-700 border-blue-500/20", icon: "build" }
                         : hasAlerts
@@ -218,9 +236,9 @@ export default function InventoryView() {
                                   <span className="material-symbols-outlined text-[14px]">{statusColor.icon}</span>
                                   {status}
                                </span>
-                               <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1 truncate max-w-[200px]" title={printer.area_actual}>
+                               <span className="text-xs font-bold text-on-surface-variant flex items-center gap-1 truncate max-w-[200px]" title={displayLocation}>
                                  <span className="material-symbols-outlined text-[14px] text-primary">location_on</span>
-                                 {printer.area_actual || "Sin asignar"}
+                                 {displayLocation}
                                </span>
                              </div>
                           </td>
@@ -280,8 +298,26 @@ export default function InventoryView() {
                  const status = getPrinterStatus(printer);
                  const hasAlerts = checkPrinterAlerts(printer);
                  const toner = printer.consumibles?.toner_nivel ?? null;
+                 const maint = printer.consumibles?.mantenimiento_kit_nivel ?? null;
+                 const unit = printer.consumibles?.unidad_imagen_nivel ?? null;
                  const statusColor = status === "En Mantenimiento" ? "text-blue-500 bg-blue-500/10" : hasAlerts ? "text-amber-500 bg-amber-500/10" : "text-emerald-500 bg-emerald-500/10";
                  
+                 const areaActual = printer.area_actual || "";
+                 const ubicacion = printer.ubicacion_entidad || "Hospital";
+                 let displayLocation = areaActual || "Área no asignada";
+                 if (ubicacion.toUpperCase() !== "HOSPITAL") {
+                   const isInvalidArea = !areaActual || 
+                                         areaActual.toLowerCase().includes("soporte") || 
+                                         areaActual.toLowerCase().includes("sin asignar") || 
+                                         /^[-_\s]+$/.test(areaActual);
+                   
+                   if (isInvalidArea) {
+                     displayLocation = ubicacion;
+                   } else {
+                     displayLocation = `${ubicacion} - ${areaActual.trim()}`;
+                   }
+                 }
+
                  return (
                    <div 
                      key={printer.id_serie} 
@@ -302,14 +338,24 @@ export default function InventoryView() {
                      </div>
                      <div className="flex items-center gap-2 text-xs text-on-surface-variant font-medium bg-surface-container-low p-2 rounded-xl">
                        <span className="material-symbols-outlined text-base text-primary">location_on</span>
-                       <span className="truncate">{printer.area_actual || "Área no asignada"}</span>
+                       <span className="truncate">{displayLocation}</span>
                      </div>
-                     <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black text-outline uppercase">Tóner</span>
-                        <div className="flex-1 h-2 bg-surface-container-high rounded-full overflow-hidden">
-                          <div className={`h-full ${toner <= 15 ? 'bg-error' : 'bg-primary'}`} style={{ width: `${toner || 0}%` }} />
-                        </div>
-                        <span className="text-xs font-bold text-on-surface">{toner ?? '-'}%</span>
+                     <div className="flex flex-col gap-2 mt-1">
+                       {[
+                         { label: "Tóner", value: toner, color: "bg-primary" },
+                         { label: "Kit Mant.", value: maint, color: "bg-tertiary" },
+                         { label: "Unidad Img.", value: unit,  color: "bg-secondary" }
+                       ].map(({label, value, color}) => (
+                         <div key={label} className="flex items-center gap-2">
+                           <span className="text-[10px] font-black text-outline uppercase w-[70px] truncate">{label}</span>
+                           <div className="flex-1 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+                             <div className={`h-full rounded-full transition-all ${value !== null && value <= 15 ? 'bg-error' : color}`} style={{ width: value === null ? '0%' : `${value}%` }} />
+                           </div>
+                           <span className={`text-[11px] font-bold w-8 text-right ${value !== null && value <= 15 ? 'text-error' : 'text-on-surface'}`}>
+                             {value === null ? '-' : `${value}%`}
+                           </span>
+                         </div>
+                       ))}
                      </div>
                    </div>
                  )

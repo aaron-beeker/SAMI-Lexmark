@@ -11,7 +11,8 @@ import {
   deletePrinterHistoryItem as dbDeletePrinterHistoryItem
 } from "../../models/PrinterModel";
 import { calcularFechasPredictivas } from "../../services/PredictionService";
-
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 export function checkPrinterAlerts(p) {
   if (!p) return false;
   
@@ -720,7 +721,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     }
   };
 
-  const handleDownloadReport = () => {
+  const handleDownloadReport = async () => {
     try {
       const today = new Date();
       const dd = String(today.getDate()).padStart(2, "0");
@@ -728,9 +729,31 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
       const yy = String(today.getFullYear()).slice(-2);
       const dateStr = `${dd}/${mm}/${yy}`;
 
-      const areaHeader = `AREA ACTUAL`;
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "SAMI Lexmark";
+      wb.created = today;
 
-      // 1. Sort for detailed sheet
+      // Estilos Corporativos
+      const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF008240' } }; // Lexmark Green
+      const headerFont = { color: { argb: 'FFFFFFFF' }, bold: true, size: 11, name: 'Calibri' };
+      const titleFont = { color: { argb: 'FF008240' }, bold: true, size: 16, name: 'Calibri' };
+      const centerAlign = { vertical: 'middle', horizontal: 'center' };
+      const leftAlign = { vertical: 'middle', horizontal: 'left' };
+      
+      const thinBorder = {
+        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        right: { style: 'thin', color: { argb: 'FFCCCCCC' } }
+      };
+
+      const getStatusColor = (status) => {
+        if (status.includes("MANTENIMIENTO")) return { argb: 'FFE74C3C' }; // Red
+        if (status.includes("ALERTA")) return { argb: 'FFF39C12' }; // Orange
+        return { argb: 'FF27AE60' }; // Green
+      };
+
+      // 1. Sort Printers
       const sortedPrinters = [...printers].sort((a, b) => {
         const modelA = (a.modelo || "MX431ADN").trim();
         const modelB = (b.modelo || "MX431ADN").trim();
@@ -752,40 +775,44 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
         return areaA.localeCompare(areaB, "es", { sensitivity: "base" });
       });
 
-      const reportRows = sortedPrinters.map((p, idx) => {
-        const inop = isPrinterInoperative(p);
-        const alert = checkPrinterAlerts(p);
-        const estado = inop ? "🚨 MANTENIMIENTO" : (alert ? "⚠️ ALERTA" : "✅ OPERATIVO");
-        return {
-          "N°": idx + 1,
-          "🖨️ MODELO": p.modelo || "MX431ADN",
-          "📌 SERIE": p.id_serie,
-          [areaHeader]: p.area_actual || "Soporte",
-          "📊 ESTADO": estado,
-          "⚫ TÓNER (%)": p.consumibles?.toner_nivel ?? "-",
-          "🔧 KIT (%)": p.consumibles?.mantenimiento_kit_nivel ?? "-",
-          "🖼️ U. IMAGEN (%)": p.consumibles?.unidad_imagen_nivel ?? "-",
-          "📝 CASO CAS": p.codigo_caso_cas || "",
-          "🔍 OBSERVACIONES": p.observaciones || ""
-        };
+      const sheetsData = {};
+      sortedPrinters.forEach(p => {
+        const ubi = p.ubicacion_entidad || "Hospital";
+        if (!sheetsData[ubi]) sheetsData[ubi] = [];
+        sheetsData[ubi].push(p);
       });
 
       // 2. Summary Sheet (Strategic)
-      const strategicRows = [];
+      const wsStrategic = wb.addWorksheet("Resumen Estratégico", { views: [{ showGridLines: false }] });
+      wsStrategic.columns = [
+        { width: 25 }, { width: 18 }, { width: 15 }, { width: 18 }, { width: 22 }, { width: 22 }, { width: 25 }, { width: 25 }, { width: 45 }
+      ];
+
+      // Titulo
+      wsStrategic.mergeCells('A1:I2');
+      const titleCellStrat = wsStrategic.getCell('A1');
+      titleCellStrat.value = `REPORTE ESTRATÉGICO GERENCIAL - SAMI LEXMARK (${dateStr})`;
+      titleCellStrat.font = titleFont;
+      titleCellStrat.alignment = centerAlign;
+
+      // Headers Estrategico
+      const stratHeaders = ["🖨️ MODELO", "📊 TOTAL EQUIPOS", "✅ OPERATIVOS", "⚠️ CON ALERTAS", "🚨 EN MANTENIMIENTO", "🛒 COMPRAR TÓNER", "🛒 COMPRAR KIT MANT.", "🛒 COMPRAR U. IMAGEN", "📍 TOP 3 ÁREAS (Mayor Vol.)"];
+      const stratHeaderRow = wsStrategic.addRow(stratHeaders);
+      stratHeaderRow.height = 30;
+      stratHeaderRow.eachCell((cell) => {
+        cell.fill = headerFill;
+        cell.font = headerFont;
+        cell.alignment = centerAlign;
+        cell.border = thinBorder;
+      });
+
       const models = [...new Set(printers.map(p => p.modelo || "MX431ADN"))].sort();
-      
-      let granTotalToner = 0;
-      let granTotalKit = 0;
-      let granTotalUnidad = 0;
+      let granTotalToner = 0, granTotalKit = 0, granTotalUnidad = 0;
 
       models.forEach(modelo => {
         const modelPrinters = printers.filter(p => (p.modelo || "MX431ADN") === modelo);
-        let operativos = 0;
-        let alertas = 0;
-        let mantenimiento = 0;
-        let reqToner = 0;
-        let reqKit = 0;
-        let reqUnidad = 0;
+        let operativos = 0, alertas = 0, mantenimiento = 0;
+        let reqToner = 0, reqKit = 0, reqUnidad = 0;
         const areasCount = {};
         
         modelPrinters.forEach(p => {
@@ -807,77 +834,145 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
            areasCount[area] = (areasCount[area] || 0) + 1;
         });
         
-        granTotalToner += reqToner;
-        granTotalKit += reqKit;
-        granTotalUnidad += reqUnidad;
+        granTotalToner += reqToner; granTotalKit += reqKit; granTotalUnidad += reqUnidad;
         
-        const topAreas = Object.entries(areasCount)
-          .sort((a,b) => b[1] - a[1])
-          .slice(0, 3)
-          .map(e => `${e[0]} (${e[1]})`)
-          .join(", ");
+        const topAreas = Object.entries(areasCount).sort((a,b) => b[1] - a[1]).slice(0, 3).map(e => `${e[0]} (${e[1]})`).join(", ");
           
-        strategicRows.push({
-          "🖨️ MODELO": modelo,
-          "📊 TOTAL EQUIPOS": modelPrinters.length,
-          "✅ OPERATIVOS": operativos,
-          "⚠️ CON ALERTAS": alertas,
-          "🚨 EN MANTENIMIENTO": mantenimiento,
-          "🛒 COMPRAR TÓNER": reqToner > 0 ? `${reqToner} und.` : "-",
-          "🛒 COMPRAR KIT MANT.": reqKit > 0 ? `${reqKit} und.` : "-",
-          "🛒 COMPRAR U. IMAGEN": reqUnidad > 0 ? `${reqUnidad} und.` : "-",
-          "📍 TOP 3 ÁREAS": topAreas
+        const row = wsStrategic.addRow([
+          modelo,
+          modelPrinters.length,
+          operativos,
+          alertas,
+          mantenimiento,
+          reqToner > 0 ? `${reqToner} und.` : "-",
+          reqKit > 0 ? `${reqKit} und.` : "-",
+          reqUnidad > 0 ? `${reqUnidad} und.` : "-",
+          topAreas
+        ]);
+        
+        row.eachCell((cell, colNumber) => {
+          cell.alignment = colNumber === 1 || colNumber === 9 ? leftAlign : centerAlign;
+          cell.border = thinBorder;
+          if (colNumber === 3 && operativos > 0) cell.font = { color: { argb: 'FF27AE60' }, bold: true };
+          if (colNumber === 4 && alertas > 0) cell.font = { color: { argb: 'FFF39C12' }, bold: true };
+          if (colNumber === 5 && mantenimiento > 0) cell.font = { color: { argb: 'FFE74C3C' }, bold: true };
         });
       });
 
-      // Agregar fila de totales para compras
-      strategicRows.push({});
-      strategicRows.push({
-          "🖨️ MODELO": "TOTAL COMPRA SUGERIDA:",
-          "📊 TOTAL EQUIPOS": "",
-          "✅ OPERATIVOS": "",
-          "⚠️ CON ALERTAS": "",
-          "🚨 EN MANTENIMIENTO": "",
-          "🛒 COMPRAR TÓNER": granTotalToner > 0 ? `${granTotalToner} und.` : "-",
-          "🛒 COMPRAR KIT MANT.": granTotalKit > 0 ? `${granTotalKit} und.` : "-",
-          "🛒 COMPRAR U. IMAGEN": granTotalUnidad > 0 ? `${granTotalUnidad} und.` : "-",
-          "📍 TOP 3 ÁREAS": ""
+      // Totalizadores
+      wsStrategic.addRow([]);
+      const totalRow = wsStrategic.addRow([
+        "TOTAL COMPRA SUGERIDA:", "", "", "", "",
+        granTotalToner > 0 ? `${granTotalToner} und.` : "-",
+        granTotalKit > 0 ? `${granTotalKit} und.` : "-",
+        granTotalUnidad > 0 ? `${granTotalUnidad} und.` : "-",
+        ""
+      ]);
+      totalRow.height = 25;
+      totalRow.eachCell((cell, colNum) => {
+        cell.font = { bold: true, color: { argb: 'FF000000' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+        cell.alignment = centerAlign;
+        cell.border = thinBorder;
+        if (colNum >= 6 && colNum <= 8 && cell.value !== "-") {
+          cell.font = { bold: true, color: { argb: 'FFE74C3C' } };
+        }
+      });
+      wsStrategic.mergeCells(`A${totalRow.number}:E${totalRow.number}`);
+
+      // 3. Sheets por Ubicacion Fisica
+      Object.keys(sheetsData).forEach(ubicacion => {
+        let sheetName = ubicacion.toUpperCase() === "HOSPITAL" ? "Inventario Hospital" : `Inv. ${ubicacion}`;
+        if (sheetName.length > 31) sheetName = sheetName.substring(0, 31);
+        
+        const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
+        ws.columns = [
+          { width: 6 }, { width: 20 }, { width: 22 }, { width: 35 }, { width: 22 }, { width: 15 }, { width: 15 }, { width: 18 }, { width: 18 }, { width: 50 }
+        ];
+
+        // Titulo de la sede
+        ws.mergeCells('A1:J2');
+        const titleCell = ws.getCell('A1');
+        titleCell.value = `INVENTARIO DE IMPRESORAS - ${ubicacion.toUpperCase()} (${dateStr})`;
+        titleCell.font = titleFont;
+        titleCell.alignment = centerAlign;
+
+        // Cabeceras
+        const headers = ["N°", "🖨️ MODELO", "📌 SERIE", "🏢 ÁREA ACTUAL", "📊 ESTADO", "⚫ TÓNER", "🔧 KIT", "🖼️ U. IMAGEN", "📝 CASO CAS", "🔍 OBSERVACIONES"];
+        const headerRow = ws.addRow(headers);
+        headerRow.height = 25;
+        headerRow.eachCell((cell) => {
+          cell.fill = headerFill;
+          cell.font = headerFont;
+          cell.alignment = centerAlign;
+          cell.border = thinBorder;
+        });
+
+        // Filas
+        sheetsData[ubicacion].forEach((p, idx) => {
+          const inop = isPrinterInoperative(p);
+          const alert = checkPrinterAlerts(p);
+          const estado = inop ? "🚨 MANTENIMIENTO" : (alert ? "⚠️ ALERTA" : "✅ OPERATIVO");
+          
+          const areaActual = p.area_actual || "";
+          let areaDisplay = areaActual || "Sin asignar";
+                                
+          if (ubicacion.toUpperCase() !== "HOSPITAL") {
+            const isInvalidArea = !areaActual || 
+                                  areaActual.toLowerCase().includes("soporte") || 
+                                  areaActual.toLowerCase().includes("sin asignar") || 
+                                  /^[-_\s]+$/.test(areaActual);
+            if (isInvalidArea) {
+              areaDisplay = ubicacion;
+            } else {
+              areaDisplay = `${ubicacion} - ${areaActual.trim()}`;
+            }
+          } else {
+            areaDisplay = areaActual.trim() || "Sin asignar";
+          }
+
+          const formatLevel = (lvl) => lvl !== null && lvl !== undefined && lvl !== "-" ? `${lvl}%` : "-";
+
+          const row = ws.addRow([
+            idx + 1,
+            p.modelo || "MX431ADN",
+            p.id_serie,
+            areaDisplay,
+            estado,
+            formatLevel(p.consumibles?.toner_nivel),
+            formatLevel(p.consumibles?.mantenimiento_kit_nivel),
+            formatLevel(p.consumibles?.unidad_imagen_nivel),
+            p.codigo_caso_cas || "",
+            p.observaciones || ""
+          ]);
+
+          row.eachCell((cell, colNumber) => {
+            cell.alignment = centerAlign;
+            cell.border = thinBorder;
+            
+            // Colores especiales
+            if (colNumber === 4 || colNumber === 10) cell.alignment = leftAlign; // Area y Obs a la izq
+            if (colNumber === 5) {
+              cell.font = { bold: true, color: getStatusColor(estado) };
+            }
+            if (colNumber >= 6 && colNumber <= 8) {
+              const val = parseInt(cell.value);
+              if (!isNaN(val) && val <= 15) {
+                cell.font = { bold: true, color: { argb: 'FFE74C3C' } };
+              }
+            }
+          });
+        });
+        
+        // Agregar filtro automático
+        ws.autoFilter = {
+          from: 'A3',
+          to: `J${sheetsData[ubicacion].length + 3}`
+        };
       });
 
-      const wb = XLSX.utils.book_new();
-      
-      // Sheet 1: Detalles
-      const wsDetails = XLSX.utils.json_to_sheet(reportRows);
-      wsDetails["!cols"] = [
-        { wch: 5 },  // N°
-        { wch: 20 }, // MODELO
-        { wch: 20 }, // SERIE
-        { wch: 30 }, // AREA
-        { wch: 20 }, // ESTADO
-        { wch: 15 }, // TONER
-        { wch: 15 }, // KIT
-        { wch: 18 }, // U. IMAGEN
-        { wch: 20 }, // CASO CAS
-        { wch: 50 }  // OBSERVACIONES
-      ];
-      XLSX.utils.book_append_sheet(wb, wsDetails, "Inventario Detallado");
-
-      // Sheet 2: Estrategico
-      const wsStrategic = XLSX.utils.json_to_sheet(strategicRows);
-      wsStrategic["!cols"] = [
-        { wch: 25 }, // MODELO
-        { wch: 18 }, // TOTAL
-        { wch: 15 }, // OPERATIVOS
-        { wch: 18 }, // ALERTAS
-        { wch: 22 }, // MANTENIMIENTO
-        { wch: 22 }, // COMPRAR TONER
-        { wch: 25 }, // COMPRAR KIT
-        { wch: 25 }, // COMPRAR UNIDAD
-        { wch: 40 }  // AREAS
-      ];
-      XLSX.utils.book_append_sheet(wb, wsStrategic, "Resumen Estratégico");
-
-      XLSX.writeFile(wb, `INFORME_ESTRATEGICO_${dateStr.replace(/\//g, "-")}.xlsx`);
+      const buffer = await wb.xlsx.writeBuffer();
+      saveAs(new Blob([buffer]), `INFORME_GERENCIAL_SAMI_${dateStr.replace(/\//g, "-")}.xlsx`);
     } catch (error) {
       console.error("Error generating Excel report:", error);
       alert("Error al descargar el reporte Excel: " + error.message);

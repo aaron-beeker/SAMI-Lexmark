@@ -82,7 +82,7 @@ export default function TopAppBar() {
   };
 
   return (
-    <header className="shrink-0 flex justify-between items-center px-6 h-16 bg-surface/90 backdrop-blur-md border-b border-outline-variant shadow-sm z-30">
+    <header className="shrink-0 flex justify-between items-center px-3 md:px-6 h-16 bg-surface/90 backdrop-blur-md border-b border-outline-variant shadow-sm z-30">
       <div 
         className="flex items-center gap-2 cursor-pointer active:opacity-70" 
         onClick={() => navigate("/dashboard")}
@@ -96,22 +96,24 @@ export default function TopAppBar() {
         <h1 className="font-headline-lg-mobile text-xs font-black text-primary tracking-widest uppercase">SAMI-Lexmark</h1>
       </div>
 
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-1.5 md:gap-2.5">
         {isMonitorOnline ? (
-          <div className="flex items-center gap-1.5 text-primary bg-primary-fixed/50 px-2.5 py-1 rounded-full border border-primary/15" title={`Monitor Worker Online en ${pcName}`}>
+          <div className="flex items-center gap-1 text-primary bg-primary-fixed/50 px-2 py-1 md:px-2.5 rounded-full border border-primary/15" title={`Monitor Worker Online en ${pcName}`}>
             <span className="material-symbols-outlined text-sm animate-pulse-subtle">cloud_done</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider">{workerState} {pcName ? `- ${pcName}` : ''}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider hidden md:inline">{workerState} {pcName ? `- ${pcName}` : ''}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider md:hidden">ON</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 text-error bg-error/10 px-2.5 py-1 rounded-full border border-error/20" title="Alerta: El sistema de monitoreo está apagado o fallando">
+          <div className="flex items-center gap-1 text-error bg-error/10 px-2 py-1 md:px-2.5 rounded-full border border-error/20" title="Alerta: El sistema de monitoreo está apagado o fallando">
             <span className="material-symbols-outlined text-sm">cloud_off</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider">Desconectado {pcName ? `- ${pcName}` : ''}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider hidden md:inline">Desconectado {pcName ? `- ${pcName}` : ''}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider md:hidden">OFF</span>
           </div>
         )}
 
         {isAuthenticated ? (
-          <div className="flex items-center gap-2 bg-surface-container-high pl-3 pr-1 py-1 rounded-full border border-outline-variant/60 shadow-sm">
-            <span className="text-xs font-bold text-on-surface truncate max-w-[200px] hidden md:inline mr-1">
+          <div className="flex items-center gap-1.5 bg-surface-container-high pl-2 md:pl-3 pr-1 py-1 rounded-full border border-outline-variant/60 shadow-sm">
+            <span className="text-[11px] md:text-xs font-bold text-on-surface truncate max-w-[80px] md:max-w-[200px] hidden sm:inline mr-1">
               {getGreeting()}
             </span>
             <button
