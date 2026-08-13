@@ -1,12 +1,13 @@
 import React, { useState } from "react";
-import { useAuthContext } from '../contexts/AuthContext';
-import { useDataContext } from '../contexts/DataContext';
 
-
-export default function LoginModal() {
-  const { loginWithGoogle, loginError, setLoginError } = useAuthContext();
-  const { isLoginModalOpen: isOpen, onClose, hideCloseButton } = useDataContext();
-
+export default function LoginModal({
+  isOpen,
+  onClose,
+  loginWithGoogle,
+  loginError,
+  setLoginError,
+  hideCloseButton
+}) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;

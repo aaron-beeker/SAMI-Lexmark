@@ -11,7 +11,7 @@ export default function TopAppBar() {
   const location = useLocation();
   const currentPath = location.pathname.replace('/', '') || 'dashboard';
 
-  const { isAuthenticated, user, onLoginClick, onLogoutClick } = useAuthContext();
+  const { isAuthenticated, user, logout, setIsLoginModalOpen } = useAuthContext();
 
   const [lastHeartbeatTime, setLastHeartbeatTime] = useState(Date.now());
   const [workerState, setWorkerState] = useState("Corriendo");
@@ -117,7 +117,7 @@ export default function TopAppBar() {
               {getGreeting()}
             </span>
             <button
-              onClick={onLogoutClick}
+              onClick={logout}
               className="px-3 py-1.5 rounded-full bg-error text-on-error text-[10px] font-extrabold hover:bg-error/95 active:scale-95 transition-all shadow-sm flex items-center gap-1"
               title="Cerrar Sesión"
             >
@@ -127,7 +127,7 @@ export default function TopAppBar() {
           </div>
         ) : (
           <button
-            onClick={onLoginClick}
+            onClick={() => setIsLoginModalOpen(true)}
             className="px-4 py-1.5 rounded-full bg-primary text-on-primary text-[10px] font-black uppercase tracking-wider hover:bg-primary/95 active:scale-95 transition-all shadow-md flex items-center gap-1"
           >
             <span className="material-symbols-outlined text-sm">lock</span>
