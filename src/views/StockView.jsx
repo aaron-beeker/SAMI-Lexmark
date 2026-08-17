@@ -28,6 +28,14 @@ export default function StockView() {
     return <span className={`font-black min-w-[14px] text-center text-xs ${textColor}`}>{value ?? 0}</span>;
   };
 
+  const getCapacities = (modelo) => {
+    const mod = (modelo || "").toUpperCase();
+    if (mod.includes("MX431")) return { toner: '20K', mant: '100K', unit: '40K' };
+    if (mod.includes("MX632")) return { toner: '31K', mant: '200K', unit: '75K' };
+    if (mod.includes("MX722")) return { toner: '55K', mant: '225K', unit: '150K' };
+    return { toner: '20K', mant: '100K', unit: '40K' }; // Default
+  };
+
   return (
     <section className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl p-6 shadow-sm space-y-6">
       <div className="flex items-center justify-between">
@@ -44,7 +52,9 @@ export default function StockView() {
         {repuestos.length === 0 ? (
           <p className="text-xs text-outline text-center py-4">Cargando stock...</p>
         ) : (
-          repuestos.map(item => (
+          repuestos.map(item => {
+            const caps = getCapacities(item.modelo);
+            return (
             <div key={item.id} className="p-3 bg-surface-container-low rounded-xl border border-outline-variant/30 flex flex-col gap-3">
               
               {/* Header */}
@@ -63,7 +73,7 @@ export default function StockView() {
                 <div className="flex flex-col gap-1.5 p-2 bg-surface-container-lowest rounded-lg border border-outline-variant/20">
                   <span className="text-[10px] font-bold text-on-surface flex items-center justify-center gap-1 bg-surface-container-low rounded-md py-0.5 border border-outline-variant/10">
                     <span className="material-symbols-outlined text-primary text-[12px]">layers</span>
-                    Tóner
+                    Tóner ({caps.toner})
                   </span>
                   <div className="flex items-center justify-center gap-4 px-1 py-1">
                     <div className="flex flex-col items-center">
@@ -82,7 +92,7 @@ export default function StockView() {
                 <div className="flex flex-col gap-1.5 p-2 bg-surface-container-lowest rounded-lg border border-outline-variant/20">
                   <span className="text-[10px] font-bold text-on-surface flex items-center justify-center gap-1 bg-surface-container-low rounded-md py-0.5 border border-outline-variant/10">
                     <span className="material-symbols-outlined text-tertiary text-[12px]">build</span>
-                    Kit Mant.
+                    Kit Mant. ({caps.mant})
                   </span>
                   <div className="flex items-center justify-center gap-4 px-1 py-1">
                     <div className="flex flex-col items-center">
@@ -101,7 +111,7 @@ export default function StockView() {
                 <div className="flex flex-col gap-1.5 p-2 bg-surface-container-lowest rounded-lg border border-outline-variant/20">
                   <span className="text-[10px] font-bold text-on-surface flex items-center justify-center gap-1 bg-surface-container-low rounded-md py-0.5 border border-outline-variant/10">
                     <span className="material-symbols-outlined text-secondary text-[12px]">photo_size_select_actual</span>
-                    Unid. Imag.
+                    Unid. Imag. ({caps.unit})
                   </span>
                   <div className="flex items-center justify-center gap-4 px-1 py-1">
                     <div className="flex flex-col items-center">
@@ -118,7 +128,8 @@ export default function StockView() {
 
               </div>
             </div>
-          ))
+          );
+        })
         )}
       </div>
     </section>

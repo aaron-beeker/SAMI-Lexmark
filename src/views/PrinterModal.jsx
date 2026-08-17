@@ -15,6 +15,14 @@ export default function PrinterModal() {
   const [isEditing, setIsEditing] = React.useState(false);
   const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editGarantia, setEditGarantia, editEstadisticas, setEditEstadisticas, editFuncionamiento, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
 
+  const getCapacities = (modelo) => {
+    const mod = (modelo || "").toUpperCase();
+    if (mod.includes("MX431")) return { toner: '20000', mant: '100000', unit: '40000' };
+    if (mod.includes("MX632")) return { toner: '31000', mant: '200000', unit: '75000' };
+    if (mod.includes("MX722")) return { toner: '55000', mant: '225000', unit: '150000' };
+    return { toner: '20000', mant: '100000', unit: '40000' }; // Default
+  };
+
   const [calcValues, setCalcValues] = React.useState({
     toner: { cap: '20000', caras: '' },
     mant: { cap: '100000', caras: '' },
@@ -49,24 +57,26 @@ export default function PrinterModal() {
   React.useEffect(() => {
     setIsEditing(isCreateMode);
     
+    const caps = getCapacities(isCreateMode ? editModelo : selectedPrinter?.modelo);
+    
     if (!isCreateMode && selectedPrinter) {
       const toner = selectedPrinter.consumibles?.toner_nivel ?? 100;
       const mant = selectedPrinter.consumibles?.mantenimiento_kit_nivel ?? 100;
       const unit = selectedPrinter.consumibles?.unidad_imagen_nivel ?? 100;
       
       setCalcValues({
-        toner: { cap: '20000', caras: String(Math.round(20000 - (toner * 20000 / 100))) },
-        mant: { cap: '100000', caras: String(Math.round(100000 - (mant * 100000 / 100))) },
-        unit: { cap: '40000', caras: String(Math.round(40000 - (unit * 40000 / 100))) }
+        toner: { cap: caps.toner, caras: String(Math.round(Number(caps.toner) - (toner * Number(caps.toner) / 100))) },
+        mant: { cap: caps.mant, caras: String(Math.round(Number(caps.mant) - (mant * Number(caps.mant) / 100))) },
+        unit: { cap: caps.unit, caras: String(Math.round(Number(caps.unit) - (unit * Number(caps.unit) / 100))) }
       });
     } else {
       setCalcValues({
-        toner: { cap: '20000', caras: '' },
-        mant: { cap: '100000', caras: '' },
-        unit: { cap: '40000', caras: '' }
+        toner: { cap: caps.toner, caras: '' },
+        mant: { cap: caps.mant, caras: '' },
+        unit: { cap: caps.unit, caras: '' }
       });
     }
-  }, [isCreateMode, selectedPrinter]);
+  }, [isCreateMode, selectedPrinter, editModelo]);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
