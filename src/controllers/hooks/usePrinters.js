@@ -887,18 +887,18 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
         
         const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
         ws.columns = [
-          { width: 6 }, { width: 20 }, { width: 22 }, { width: 35 }, { width: 22 }, { width: 15 }, { width: 15 }, { width: 18 }, { width: 18 }, { width: 50 }
+          { width: 6 }, { width: 20 }, { width: 22 }, { width: 15 }, { width: 35 }, { width: 22 }, { width: 15 }, { width: 15 }, { width: 18 }, { width: 18 }, { width: 50 }
         ];
 
         // Titulo de la sede
-        ws.mergeCells('A1:J2');
+        ws.mergeCells('A1:K2');
         const titleCell = ws.getCell('A1');
         titleCell.value = `INVENTARIO DE IMPRESORAS - ${ubicacion.toUpperCase()} (${dateStr})`;
         titleCell.font = titleFont;
         titleCell.alignment = centerAlign;
 
         // Cabeceras
-        const headers = ["N°", "🖨️ MODELO", "📌 SERIE", "🏢 ÁREA ACTUAL", "📊 ESTADO", "⚫ TÓNER", "🔧 KIT", "🖼️ U. IMAGEN", "📝 CASO CAS", "🔍 OBSERVACIONES"];
+        const headers = ["N°", "🖨️ MODELO", "📌 SERIE", "🛡️ GARANTÍA", "🏢 ÁREA ACTUAL", "📊 ESTADO", "⚫ TÓNER", "🔧 KIT", "🖼️ U. IMAGEN", "📝 CASO CAS", "🔍 OBSERVACIONES"];
         const headerRow = ws.addRow(headers);
         headerRow.height = 25;
         headerRow.eachCell((cell) => {
@@ -937,6 +937,7 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             idx + 1,
             p.modelo || "MX431ADN",
             p.id_serie,
+            p.garantia_vencimiento || "-",
             areaDisplay,
             estado,
             formatLevel(p.consumibles?.toner_nivel),
@@ -950,12 +951,23 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
             cell.alignment = centerAlign;
             cell.border = thinBorder;
             
-            // Colores especiales
-            if (colNumber === 4 || colNumber === 10) cell.alignment = leftAlign; // Area y Obs a la izq
-            if (colNumber === 5) {
+            // Colores especiales y alineación
+            if (colNumber === 5 || colNumber === 11) cell.alignment = leftAlign; // Area y Obs a la izq
+            
+            // Columna 4: Garantía vencida
+            if (colNumber === 4 && p.garantia_vencimiento) {
+              const warrantyDate = new Date(`${p.garantia_vencimiento}T00:00:00`);
+              const todayMidnight = new Date();
+              todayMidnight.setHours(0, 0, 0, 0);
+              if (warrantyDate < todayMidnight) {
+                cell.font = { bold: true, color: { argb: 'FFE74C3C' } }; // Rojo
+              }
+            }
+
+            if (colNumber === 6) { // Estado
               cell.font = { bold: true, color: getStatusColor(estado) };
             }
-            if (colNumber >= 6 && colNumber <= 8) {
+            if (colNumber >= 7 && colNumber <= 9) { // Consumibles
               const val = parseInt(cell.value);
               if (!isNaN(val) && val <= 15) {
                 cell.font = { bold: true, color: { argb: 'FFE74C3C' } };
@@ -1317,6 +1329,68 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     currentPage * pageSize
   );
 
+  const [fetchingWarranty, setFetchingWarranty] = useState(false);
+  const [syncingWarranties, setSyncingWarranties] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({ total: 0, current: 0 });
+
+  const fetchWarranty = async (modelo, serie) => {
+    if (!modelo || !serie) return;
+    setFetchingWarranty(true);
+    try {
+      const response = await fetch('http://localhost:3001/api/warranty', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelo, serie })
+      });
+      const data = await response.json();
+      if (data.success && data.fecha_vencimiento) {
+        setEditGarantia(data.fecha_vencimiento);
+        console.log("Garantía consultada real:", data);
+      } else {
+        console.warn("Error en extractor:", data.error || data.mensaje);
+      }
+    } catch (error) {
+      console.error("Error al consultar la garantía en el backend:", error);
+    } finally {
+      setFetchingWarranty(false);
+    }
+  };
+
+  const syncAllWarranties = async () => {
+    const printersToSync = printers.filter(p => !p.garantia_vencimiento && p.id_serie && p.modelo);
+    if (printersToSync.length === 0) {
+      alert("Todas las impresoras ya tienen garantía sincronizada o faltan datos.");
+      return;
+    }
+
+    setSyncingWarranties(true);
+    setSyncProgress({ total: printersToSync.length, current: 0 });
+
+    for (let i = 0; i < printersToSync.length; i++) {
+      const printer = printersToSync[i];
+      try {
+        const response = await fetch('http://localhost:3001/api/warranty', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modelo: printer.modelo, serie: printer.id_serie })
+        });
+        const data = await response.json();
+        
+        if (data.success && data.fecha_vencimiento) {
+          await updatePrinter(db, printer.id_serie, {
+            garantia_vencimiento: data.fecha_vencimiento
+          });
+        }
+      } catch (error) {
+        console.error(`Error syncing warranty for ${printer.id_serie}:`, error);
+      }
+      setSyncProgress(prev => ({ ...prev, current: i + 1 }));
+    }
+
+    setSyncingWarranties(false);
+    alert("Sincronización de garantías completada.");
+  };
+
   const handleDownloadPDF = async () => {
     try {
       const module = await import("../../utils/pdfGenerator");
@@ -1404,6 +1478,11 @@ export function usePrinters({ db, filterCriticidad, addGeneralHistoryLog }) {
     currentPage,
     setCurrentPage,
     totalPages,
-    paginatedPrinters
+    paginatedPrinters,
+    fetchWarranty,
+    fetchingWarranty,
+    syncAllWarranties,
+    syncingWarranties,
+    syncProgress
   };
 }

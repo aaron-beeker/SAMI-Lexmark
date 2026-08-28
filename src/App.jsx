@@ -77,15 +77,13 @@ export default function App() {
       </div>
 
       {/* Responsive BottomNavBar for mobile devices */}
-      <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface border-t border-outline-variant shadow-lg rounded-t-xl max-w-lg mx-auto left-1/2 -translate-x-1/2 md:hidden">
+      <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface border-t border-outline-variant shadow-lg rounded-t-xl md:hidden">
         {[
           { id: "dashboard", label: "Dashboard", icon: "dashboard" },
           { id: "inventario", label: "Inventario", icon: "inventory_2" },
           { id: "repuestos", label: "Repuestos", icon: "layers" },
-          { id: "chat", label: "Chat IA", icon: "smart_toy" },
-          { id: "historial", label: "Historial", icon: "history" },
           { id: "usuarios", label: "Admins", icon: "group" }
-        ].filter(tab => (tab.id !== "chat" && tab.id !== "usuarios") || isAuthenticated).map(tab => (
+        ].filter(tab => tab.id !== "usuarios" || isAuthenticated).map(tab => (
           <button
             key={tab.id}
             onClick={() => {
@@ -94,7 +92,7 @@ export default function App() {
               }
               navigate(`/${tab.id}`);
             }}
-            className={`flex flex-col items-center justify-center rounded-full px-4 py-1 active:scale-95 transition-all ${
+            className={`flex flex-col items-center justify-center rounded-xl px-2 py-1 flex-1 min-w-[60px] active:scale-95 transition-all ${
               currentPath === tab.id
                 ? "bg-secondary-container text-on-secondary-container font-semibold"
                 : "text-on-surface-variant hover:bg-surface-container-low"

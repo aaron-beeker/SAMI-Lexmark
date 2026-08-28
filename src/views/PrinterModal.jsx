@@ -13,7 +13,17 @@ export default function PrinterModal() {
   };
 
   const [isEditing, setIsEditing] = React.useState(false);
-  const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editGarantia, setEditGarantia, editEstadisticas, setEditEstadisticas, editFuncionamiento, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts } = useDataContext();
+  const { handleSavePrinterChanges, handleCloseEditModal, selectedPrinter, isCreateMode, editIdSerie, setEditIdSerie, editModelo, setEditModelo, editArea, setEditArea, editUbicacion, setEditUbicacion, editToner, setEditToner, editUnit, setEditUnit, editMantenimiento, setEditMantenimiento, editObservaciones, setEditObservaciones, editCasCode, setEditCasCode, editDetalleCaso, setEditDetalleCaso, editIp, setEditIp, editGarantia, setEditGarantia, editEstadisticas, setEditEstadisticas, editFuncionamiento, selectedPrinterHistory, handleDeleteHistoryItem, handleDeletePrinter, savingEdit, checkPrinterAlerts, fetchWarranty, fetchingWarranty } = useDataContext();
+
+  // Efecto para auto-consultar garantía si tenemos serie y modelo pero no garantía
+  React.useEffect(() => {
+    if ((isEditing || isCreateMode) && editIdSerie && editIdSerie.length >= 10 && editModelo && !editGarantia && !fetchingWarranty) {
+      const timer = setTimeout(() => {
+        fetchWarranty(editModelo, editIdSerie);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [editIdSerie, editModelo, editGarantia, isEditing, isCreateMode]);
 
   const getCapacities = (modelo) => {
     const mod = (modelo || "").toUpperCase();
@@ -317,7 +327,12 @@ export default function PrinterModal() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-outline ml-1 uppercase tracking-wider text-green-600">Vencimiento Garantía</label>
+              <div className="flex justify-between items-center ml-1">
+                <label className="text-[11px] font-bold text-outline uppercase tracking-wider text-green-600">
+                  Vencimiento Garantía 
+                  {fetchingWarranty && <span className="ml-2 text-primary animate-pulse normal-case font-normal">(Consultando...)</span>}
+                </label>
+              </div>
               <input
                 type="date"
                 value={editGarantia || ""}

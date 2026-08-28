@@ -12,7 +12,10 @@ export default function InventoryView() {
     handleDownloadReport, handleDownloadPDF, handleOpenCreateModal, 
     copiedSerialId, handleCopySerial, 
     handleOpenEditModal, getPrinterStatus, checkPrinterAlerts, 
-    currentPage, setCurrentPage, totalPages, paginatedPrinters 
+    currentPage, setCurrentPage, totalPages, paginatedPrinters,
+    syncAllWarranties,
+    syncingWarranties,
+    syncProgress 
   } = useDataContext();
   const renderWarrantyBadge = (printer) => {
     if (!printer.garantia_vencimiento) return null;
@@ -40,6 +43,18 @@ export default function InventoryView() {
           <p className="text-sm text-outline font-medium mt-1">Gestiona el estado y consumibles de tus equipos</p>
         </div>
         <div className="grid grid-cols-2 md:flex items-center gap-2 md:gap-3 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={syncAllWarranties}
+            disabled={syncingWarranties}
+            className={`w-full md:w-auto flex items-center justify-center gap-1.5 md:gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-xl font-bold text-xs md:text-sm transition-all shadow-sm border active:scale-95 ${syncingWarranties ? 'bg-surface-container text-outline border-outline-variant cursor-not-allowed' : 'bg-primary text-on-primary hover:bg-primary/90 border-transparent'}`}
+            title="Sincronizar garantías de todas las impresoras"
+          >
+            <span className={`material-symbols-outlined text-base md:text-lg ${syncingWarranties ? 'animate-spin' : ''}`}>
+              sync
+            </span>
+            {syncingWarranties ? `Sincronizando... (${syncProgress.current}/${syncProgress.total})` : 'Sincronizar Garantías'}
+          </button>
           <button
             type="button"
             onClick={handleDownloadReport}

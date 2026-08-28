@@ -39,3 +39,12 @@ body {
 .rounded-3xl {
   border-radius: 0 !important;
 }
+
+/* Utility to hide scrollbar but allow scrolling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
